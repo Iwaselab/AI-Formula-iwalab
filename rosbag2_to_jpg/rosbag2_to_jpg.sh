@@ -22,7 +22,7 @@ fi
 
 BAG_DIR="$1"
 IMAGE_TOPIC="$2"
-OUTPUT_DIR="${3:-/home/fuga/AIFMovie/images}"
+OUTPUT_DIR="${3:-/home/fuga/AIFMovie/images/extracted}"
 
 echo "ROS2 bag画像抽出スクリプト"
 echo "=========================="
