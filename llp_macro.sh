@@ -11,7 +11,7 @@ tmux send-keys -t $SESSION "cd ~/workspace/masamin" C-m
 tmux send-keys -t $SESSION "colcon build" C-m
 tmux send-keys -t $SESSION "source install/setup.bash" C-m
 tmux send-keys -t $SESSION "source /opt/ros/foxy/setup.bash" C-m
-tmux send-keys -t $SESSION "ros2 bag play /home/fuga/AIFMovie/tdu_4_vehicle_info/ --loop" C-m
+tmux send-keys -t $SESSION "ros2 bag play -s mcap /home/fuga/AIFMovie/test11_vehicle_info/test11_vehicle_info_0.mcap" C-m #tmux send-keys -t $SESSION "ros2 bag play /home/fuga/AIFMovie/tdu_4_vehicle_info/ --loop" C-m
 
 # 2つ目のウィンドウ: object_road_detector
 tmux new-window -t $SESSION

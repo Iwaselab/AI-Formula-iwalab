@@ -50,6 +50,7 @@ import cv2
 import os
 import sys
 from pathlib import Path
+from rclpy.qos import qos_profile_sensor_data
 
 class ImageSaver(Node):
     def __init__(self, topic_name, output_dir):
@@ -57,10 +58,8 @@ class ImageSaver(Node):
         self.bridge = CvBridge()
         self.output_dir = Path(output_dir)
         self.saved_count = 0
-        
         self.subscription = self.create_subscription(
-            Image, topic_name, self.image_callback, 10)
-        
+            Image, topic_name, self.image_callback, qos_profile_sensor_data)
         self.get_logger().info(f'画像保存開始: {topic_name} -> {output_dir}')
     
     def image_callback(self, msg):
@@ -101,9 +100,9 @@ SAVER_PID=$!
 # 少し待機
 sleep 2
 
-# bagファイルを再生
-echo "Bagファイルを再生中..."
-ros2 bag play "$BAG_DIR" --topics "$IMAGE_TOPIC"
+# bagファイルを再生（速度を落とし、--clock, --disable-keyboard-controlを追加）
+echo "Bagファイルを再生中...（0.2倍速, --clock, --disable-keyboard-control）"
+ros2 bag play "$BAG_DIR" --topics "$IMAGE_TOPIC" -r 0.2 --clock --disable-keyboard-control
 
 # 画像保存ノードを停止
 echo "画像保存ノードを停止中..."
