@@ -42,7 +42,9 @@ class PathOptimizer:
 
     def apply_extremum_seeking_control(self, risk: np.ndarray) -> np.ndarray:
         controllers = self.extremum_seeking_controllers
-
+        print(controllers)
+        #print(risk)
+	
         # Calculate moving averages
         risk_moving_averages = [
             controller.apply_risk_moving_average(risk) for controller, risk in zip(controllers, risk)

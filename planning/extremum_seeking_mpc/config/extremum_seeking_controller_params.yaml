@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
     controller_parameters:
-      seek_gain: -0.2 # -0.2
+      seek_gain: -0.8 # -0.2
       seek_amp: 0.08 # 0.08
       curvature_limit: 0.2
       feedback_gain: 0.9

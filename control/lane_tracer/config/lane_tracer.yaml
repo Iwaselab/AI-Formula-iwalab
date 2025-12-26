@@ -1,0 +1,27 @@
+/**:
+  ros__parameters:
+    lane_topic: "/aiformula_perception/lane_line_publisher/lane_lines/center"
+    # Default output topic: route commands to the vehicle plugin's expected topic
+    cmd_vel_topic: "/aiformula_control/extremum_seeking_mpc/cmd_vel"
+    lookahead: 4.5
+    linear_speed: 2.2
+    steer_gain: 0.8 #0.8
+    k_gain: 2.0
+    max_angular: 1.5 #2.5
+    # History and interpolation parameters
+    history_size: 50
+    min_history_for_interpolation: 5
+    jump_distance_threshold: 1.5 #　外れ値の距離
+    # ----------------------------------------------------------------------
+    # 仮の障害物回避
+    # Obstacle avoidance parameters
+    obstacle_avoidance_enabled: false  # 一時的に無効化してテスト
+    obstacle_avoidance_threshold: 1.0  # th: threshold distance in meters
+    # obstacle_topic: "/aiformula_perception/object_road_detector/rect"
+    obstacle_topic: "/aiformula_perception/object_publisher/pub_object"
+    
+    # Test obstacle parameters (for testing without real obstacle detection)
+    test_obstacle_enabled: false     # Disable test obstacle (algorithm verified!)
+    test_obstacle_x: 3.5              # Forward distance [m] - near lookahead distance
+    test_obstacle_y: 0.5              # Lateral distance [m] - slightly to the left
+    # ----------------------------------------------------------------------

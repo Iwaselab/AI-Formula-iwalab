@@ -1,0 +1,341 @@
+===============================================================================
+lane_tracer パッケージ実装サマリー
+===============================================================================
+作成日: 2025年12月12日
+目的: ROS2ベースの白線追従ノード（Pure-Pursuitアルゴリズム）
+
+===============================================================================
+1. パッケージ構成
+===============================================================================
+
+control/lane_tracer/
+├── lane_tracer/
+│   ├── __init__.py                    # Pythonパッケージマーカー
+│   └── lane_tracer.py                 # メインノード実装
+├── launch/
+│   └── lane_tracer.launch.py          # 起動ファイル
+├── config/
+│   └── lane_tracer.yaml               # パラメータ設定
+├── resource/
+│   └── lane_tracer                    # ament_pythonマーカー
+├── setup.py                           # Pythonパッケージセットアップ
+├── package.xml                        # ROSパッケージメタデータ
+└── IMPLEMENTATION_SUMMARY.txt         # このファイル
+
+===============================================================================
+2. 主要機能
+===============================================================================
+
+[2.1] Pure-Pursuit制御アルゴリズム
+- 曲率ベース: k = 2*sin(α)/Ld
+- 角速度: ω = v * k * steer_gain
+- 速度調整: v = v_base / (1 + k_gain * |k|)
+
+[2.2] フォールバック機能
+優先度: 中央線 → 最後の有効中央線 → 左線 → 右線 → 停止
+- 中央線が見失われても最後の有効な点群を保持
+- 左右線へ自動切替
+- 中央線復帰時は自動的に戻る
+
+[2.3] 安全停止機能
+- Ctrl+C終了時に自動的に速度0のコマンド送信
+- __del__()とfinally句で二重に停止処理
+
+===============================================================================
+3. パラメータ設定（config/lane_tracer.yaml）
+===============================================================================
+
+/**:
+  ros__parameters:
+    # 入力トピック
+    lane_topic: "/aiformula_perception/lane_line_publisher/lane_lines/center"
+    lane_topic_left: "/aiformula_perception/lane_line_publisher/lane_lines/left"
+    lane_topic_right: "/aiformula_perception/lane_line_publisher/lane_lines/right"
+    
+    # 出力トピック（twist_muxのmpc優先度=50で処理される）
+    cmd_vel_topic: "/aiformula_control/extremum_seeking_mpc/cmd_vel"
+    
+    # Pure-Pursuitパラメータ
+    lookahead: 2.5          # [m] 追跡ポイント距離
+    linear_speed: 2.23      # [m/s] 基本速度
+    steer_gain: 1.0         # 操舵ゲイン
+    k_gain: 2.0             # 曲率による速度低減係数
+    max_angular: 2.5        # [rad/s] 最大角速度
+
+===============================================================================
+4. トピック仕様
+===============================================================================
+
+[入力]
+- /aiformula_perception/lane_line_publisher/lane_lines/center (PointCloud2)
+- /aiformula_perception/lane_line_publisher/lane_lines/left (PointCloud2)
+- /aiformula_perception/lane_line_publisher/lane_lines/right (PointCloud2)
+
+[出力]
+- /aiformula_control/extremum_seeking_mpc/cmd_vel (Twist)
+  → twist_muxで優先度50として処理
+  → gamepad (150) > handle_controller (250) > lane_tracer (50)
+
+===============================================================================
+5. 主要コード追加箇所
+===============================================================================
+
+[5.1] クラス初期化 (__init__)
+---
+# パラメータ宣言
+self.declare_parameter('lane_topic', '...')
+self.declare_parameter('lane_topic_left', '...')
+self.declare_parameter('lane_topic_right', '...')
+self.declare_parameter('lookahead', 0.8)
+self.declare_parameter('linear_speed', 0.8)
+self.declare_parameter('steer_gain', 1.0)
+self.declare_parameter('k_gain', 3.0)
+self.declare_parameter('max_angular', 2.0)
+
+# サブスクリプション（3つの白線トピック）
+self.sub = self.create_subscription(PointCloud2, lane_topic, self.lane_callback, 10)
+self.sub_left = self.create_subscription(PointCloud2, lane_topic_left, self.lane_callback_left, 10)
+self.sub_right = self.create_subscription(PointCloud2, lane_topic_right, self.lane_callback_right, 10)
+
+# フォールバック用ストレージ
+self.last_left_points = []
+self.last_right_points = []
+self.last_center_points = []
+---
+
+[5.2] 安全停止処理
+---
+def __del__(self):
+    """ノード破棄時に停止コマンド送信"""
+    self.send_stop_command()
+
+def send_stop_command(self):
+    """速度0のTwistをパブリッシュ"""
+    try:
+        twist = Twist()
+        twist.linear.x = 0.0
+        twist.angular.z = 0.0
+        self.pub.publish(twist)
+        self.get_logger().info('Stop command sent')
+    except Exception:
+        pass
+---
+
+[5.3] メインループ (main)
+---
+def main(args=None):
+    rclpy.init(args=args)
+    node = LaneTracer()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass  # Ctrl+C を捕捉
+    finally:
+        node.send_stop_command()  # 停止コマンド送信
+        node.destroy_node()
+        rclpy.shutdown()
+---
+
+[5.4] 中央線コールバック (lane_callback)
+---
+def lane_callback(self, msg: PointCloud2):
+    points = []  # PointCloud2から(x,y)抽出
+    for p in point_cloud2.read_points(msg, field_names=("x", "y"), skip_nans=True):
+        x, y = p[0], p[1]
+        if x >= 0.0:  # 前方のみ
+            points.append((float(x), float(y)))
+    
+    if not points:
+        self.process_with_fallback()  # フォールバック処理
+        return
+    
+    self.last_center_points = points  # 有効点を保存
+    self.process_lane_points(points)
+---
+
+[5.5] Pure-Pursuit制御 (process_lane_points)
+---
+def process_lane_points(self, points: List[tuple]):
+    target = self.find_target_point(points, self.lookahead)
+    alpha = math.atan2(target[1], target[0])
+    
+    # 曲率計算
+    if self.lookahead > 0.0:
+        curvature = 2.0 * math.sin(alpha) / self.lookahead
+    else:
+        curvature = 0.0
+    
+    # 角速度計算
+    angular_z = self.base_speed * curvature
+    angular_z = max(-self.max_angular, min(self.max_angular, self.steer_gain * angular_z))
+    
+    # 速度調整（曲率に応じて減速）
+    speed = self.base_speed / (1.0 + self.k_gain * abs(curvature))
+    if speed < 0.05:
+        speed = 0.0
+    
+    # Twist発行
+    twist = Twist()
+    twist.linear.x = float(speed)
+    twist.angular.z = float(angular_z)
+    self.pub.publish(twist)
+---
+
+[5.6] フォールバック処理 (process_with_fallback)
+---
+def process_with_fallback(self):
+    """優先度: 最後の中央線 > 左線 > 右線 > 停止"""
+    if self.last_center_points:
+        self.process_lane_points(self.last_center_points)
+    elif self.last_left_points:
+        self.process_lane_points(self.last_left_points)
+    elif self.last_right_points:
+        self.process_lane_points(self.last_right_points)
+    else:
+        twist = Twist()
+        twist.linear.x = 0.0
+        twist.angular.z = 0.0
+        self.pub.publish(twist)
+---
+
+[5.7] 左右線コールバック
+---
+def lane_callback_left(self, msg: PointCloud2):
+    """左線点群をlast_left_pointsに保存"""
+    points = []
+    for p in point_cloud2.read_points(msg, field_names=("x", "y"), skip_nans=True):
+        x, y = p[0], p[1]
+        if x >= 0.0:
+            points.append((float(x), float(y)))
+    self.last_left_points = points
+
+def lane_callback_right(self, msg: PointCloud2):
+    """右線点群をlast_right_pointsに保存"""
+    # （左線と同様の処理）
+    self.last_right_points = points
+---
+
+===============================================================================
+6. ビルドと起動
+===============================================================================
+
+[6.1] ビルド
+---
+cd /path/to/workspace
+colcon build --packages-select lane_tracer
+source install/setup.bash
+---
+
+[6.2] 個別起動（推奨）
+---
+# ターミナル1: シミュレータ/カメラ
+ros2 launch sample_simulator gazebo_simulator.launch.py
+
+# ターミナル2: 白線検出
+ros2 launch lane_line_publisher lane_line_publisher.launch.py
+
+# ターミナル3: 物体検出（オプション）
+ros2 launch object_road_detector object_road_detector.launch.py
+
+# ターミナル4: lane_tracer
+ros2 launch lane_tracer lane_tracer.launch.py
+---
+
+[6.3] 統合起動（オプション）
+all_robot_nodes.launch.pyに以下を追加:
+---
+lane_tracer = IncludeLaunchDescription(
+    PythonLaunchDescriptionSource(
+        osp.join(get_package_share_directory("lane_tracer"),
+                 "launch/lane_tracer.launch.py"),
+    ),
+    condition=IfCondition([LaunchConfiguration("autopilot")]),
+)
+# return LaunchDescription に lane_tracer, を追加
+---
+
+===============================================================================
+7. 実機展開手順
+===============================================================================
+
+[7.1] パッケージコピー
+---
+# 実機のワークスペースに
+cp -r control/lane_tracer /path/to/実機/workspace/control/
+---
+
+[7.2] 実機でビルド
+---
+cd /path/to/実機/workspace
+colcon build --packages-select lane_tracer
+source install/setup.bash
+---
+
+[7.3] 起動
+個別起動方法を推奨（twist_mux設定変更不要）
+---
+ros2 launch lane_tracer lane_tracer.launch.py
+---
+
+[7.4] 注意点
+- ゲームパッド接続時はそちらが優先（priority 150 > 50）
+- 自動運転時はゲームパッドのデッドマンスイッチを離す
+- 実機の速度パラメータ（2.23 m/s）は安全確認後に調整
+- Ctrl+Cで終了すると自動的にモーター停止
+
+===============================================================================
+8. 既存システムへの影響
+===============================================================================
+
+[変更なし]
+- all_robot_nodes.launch.py: 変更なし
+- twist_mux.launch.py: 変更なし
+- twist_mux.yaml: 変更なし（mpcトピックを再利用）
+- topic_list.yaml: 変更なし（既存トピックを使用）
+
+[理由]
+lane_tracerは既存の /aiformula_control/extremum_seeking_mpc/cmd_vel トピックに
+出力するため、twist_muxのmpc設定（priority: 50）で自動的に処理される。
+
+===============================================================================
+9. トラブルシューティング
+===============================================================================
+
+[9.1] ビルドエラー: resource/lane_tracer がない
+→ touch control/lane_tracer/resource/lane_tracer
+
+[9.2] ビルドエラー: __init__.py がない
+→ touch control/lane_tracer/lane_tracer/__init__.py
+
+[9.3] 起動エラー: libexec directory does not exist
+→ launch fileでExecuteProcess + python3 -m を使用（解決済み）
+
+[9.4] カーブで速度が遅すぎる
+→ k_gain を下げる（3.0 → 2.0など）
+
+[9.5] 頭がふらつく
+→ angular_smoothing機能を追加（未実装、将来対応）
+
+[9.6] Ctrl+C後もモーターが回る
+→ send_stop_command()で解決済み
+
+===============================================================================
+10. 今後の改善案
+===============================================================================
+
+- Angular smoothing（角速度平滑化）機能追加
+- 動的パラメータ更新（再起動不要）
+- ノイズフィルタリング（点群の外れ値除去）
+- 最適lookahead距離の速度依存調整
+- RViz可視化マーカー（追従点、曲率表示）
+
+===============================================================================
+障害物回避
+13行目: RectMultiArrayのインポート
+47-49行目: 障害物回避パラメータの宣言
+64-66行目: パラメータ値の取得
+75行目: 障害物情報保存用リスト
+98-102行目: 障害物情報のサブスクリプション
+125-151行目: obstacle_callback関数
+186-189行目: 障害物回避呼び出し
+250-355行目: 障害物回避関連の関数群

@@ -84,6 +84,7 @@ class RoadRiskCalculator:
 
     def lane_line_callback(self, msg_pointcloud2: PointCloud2, side: Side) -> None:
         pc_iter = pc2.read_points(msg_pointcloud2, field_names=['x', 'y'], skip_nans=True)
+        #lane_points = np.array(pc_iter.tolist())
         lane_points = np.array(list(pc_iter))
         num_points = len(lane_points)
         if num_points < 2:
