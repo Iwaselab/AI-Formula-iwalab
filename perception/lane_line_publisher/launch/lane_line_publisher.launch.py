@@ -9,7 +9,7 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 from common_python.launch_util import get_frame_ids_and_topic_names
-from sample_vehicle.vehicle_util import get_zed_intrinsic_param_path
+from vehicle.vehicle_util import get_zed_intrinsic_param_path
 
 
 def create_lane_line_publisher_node(context: LaunchContext) -> Tuple[Node]:
@@ -71,7 +71,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "camera_sn",
-            default_value="SN48311510",
+            default_value="SN40767081",
             description="camera serial number",
         ),
         DeclareLaunchArgument(

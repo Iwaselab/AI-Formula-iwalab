@@ -1,9 +1,9 @@
 /**:
   ros__parameters:
     road_risk_potential:
-      left_gradient: 0.2
-      right_gradient: 0.2
-      margin: 0.2
+      left_gradient: 0.3
+      right_gradient: 0.3
+      margin: 0.1
       offset: 1.7
       gain: 5.
     

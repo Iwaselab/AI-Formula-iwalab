@@ -49,7 +49,7 @@ void LanePixelFinder::searchMask(const cv::Mat& binary_mask, LaneLines& lane_lin
     const int bottom = rows - 1;
     int left = 0;
     int right = cols - 1;
-    int center = (left + right) / 2;
+    int center = (left + right) /3;
 
     for (int row = bottom; row >= top; --row) {
         const auto row_ptr = binary_mask.ptr<uchar>(row);
@@ -75,7 +75,7 @@ void LanePixelFinder::searchMask(const cv::Mat& binary_mask, LaneLines& lane_lin
             }
         }
 
-        center = (left + right) / 2;
+        center = (left + right) / 3;
 
         if (found_left) lane_lines.left.pixels.emplace_back(left, row);
         if (found_right) lane_lines.right.pixels.emplace_back(right, row);
