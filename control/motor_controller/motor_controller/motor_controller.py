@@ -6,6 +6,7 @@ from enum import IntEnum
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
+from sensor_msgs.msg import Imu
 from can_msgs.msg import Frame
 
 from common_python.get_ros_parameter import get_ros_parameter
@@ -26,6 +27,7 @@ class MotorController(Node):
         # Publisher & Subscriber
         buffer_size = 10
         self.twist_sub = self.create_subscription(Twist, 'sub_speed_command', self.twist_callback, buffer_size)
+        self.imu_sub = self.create_subscription(Imu, 'sub_imu', self.imu_callback, buffer_size)  # IMU subscriber 菅澤
         self.can_pub = self.create_publisher(Frame, 'pub_can', buffer_size)
         self.publish_timer = self.create_timer(self.publish_timer_loop_duration, self.publish_canframe_callback)
         self.frame_msg = Frame()
@@ -45,6 +47,15 @@ class MotorController(Node):
         cmd_right = self.toCanCmd(rpm[DriveWheel.RIGHT])        
         can_data = cmd_right + cmd_left
         self.frame_msg.data = can_data
+    
+    def imu_callback(self, msg: Imu):
+    # まずはヨーレートだけ取得（PDで使う予定）
+        omega_z = msg.angular_velocity.z
+
+    #取得した場合に出力(テスト用)
+        self.get_logger().debug(
+        f"IMU yaw rate received: {omega_z:.4f} rad/s"
+    )
 
     def publish_canframe_callback(self):
         self.can_pub.publish(self.frame_msg)
