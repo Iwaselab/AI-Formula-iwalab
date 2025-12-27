@@ -49,7 +49,14 @@ class MotorController(Node):
         self.max_output = get_ros_parameter(self, "pd.max_output")
         self.min_output = get_ros_parameter(self, "pd.min_output")
 
+        # --- PD control用の永続変数(菅澤) ---
+        self.omega_now = 0.0     # IMUから取得する現在のヨーレート [rad/s]
+        self.omega_ref = 0.0     # 目標ヨーレート [rad/s]
+        self.e_prev = 0.0        # 1周期前の差
+        self.u_pd = 0.0          # 出力 [rad/s]
+
     def twist_callback(self, msg):
+        self.omega_ref = msg.angular.z  # 目標ヨーレート更新(菅澤)
         rpm = self.toRefRPM(msg.linear.x, msg.angular.z)
         cmd_left = self.toCanCmd(rpm[DriveWheel.LEFT])
         cmd_right = self.toCanCmd(rpm[DriveWheel.RIGHT])        
@@ -58,19 +65,35 @@ class MotorController(Node):
     
     def imu_callback(self, msg: Imu):
     # まずはヨーレートだけ取得（PDで使う予定）
-        omega_z = msg.angular_velocity.z
+        self.omega_now = msg.angular_velocity.z
 
     #取得した場合に出力(テスト用)
         self.get_logger().debug(
-        f"IMU yaw rate received: {omega_z:.4f} rad/s"
+        f"IMU yaw rate received: {self.omega_now:.4f} rad/s"
     )
 
     def publish_canframe_callback(self):
         self.can_pub.publish(self.frame_msg)
 
     def control_loop_callback(self):
-        #PD制御量を計算する関数
-        pass
+        # 誤差計算
+        e = self.omega_ref - self.omega_now
+
+        # 微分項（固定周期 dt）
+        de = (e - self.e_prev) / self.pd_dt
+
+        # PD制御
+        u = self.kp * e + self.kd * de
+
+        # --- 飽和計算 ---
+        if u > self.max_output:
+            u = self.max_output
+        elif u < self.min_output:
+            u = self.min_output
+
+        # 永続更新
+        self.u_pd = u
+        self.e_prev = e
 
 #  Velocity -> RPM Calc
 #  V_right = (V + tread/2 * w)   [m/s]
