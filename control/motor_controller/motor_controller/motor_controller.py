@@ -1,5 +1,4 @@
-#!/usr/bin/env python#
-#aaaaaaaaaaaaaaaaaaaaaa
+#!/usr/bin/env python
 from typing import List
 import numpy as np
 from enum import IntEnum
