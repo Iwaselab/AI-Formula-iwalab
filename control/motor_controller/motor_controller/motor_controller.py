@@ -57,7 +57,7 @@ class MotorController(Node):
 
     def twist_callback(self, msg):
         self.omega_ref = msg.angular.z  # 目標ヨーレート更新(菅澤)
-        rpm = self.toRefRPM(msg.linear.x, msg.angular.z)
+        rpm = self.toRefRPM(msg.linear.x, msg.angular.z, self.u_pd)
         cmd_left = self.toCanCmd(rpm[DriveWheel.LEFT])
         cmd_right = self.toCanCmd(rpm[DriveWheel.RIGHT])        
         can_data = cmd_right + cmd_left
@@ -103,12 +103,30 @@ class MotorController(Node):
 #  rpm = w * 60 / 2* pi          [rpm]
 #  rpm = rpm * gear_ratio        [rpm]
 
-    def toRefRPM(self, linear_velocity, angular_velocity):  # Calc Motor ref rad/s
+    def toRefRPM(self, linear_velocity, angular_velocity, u_pd):  # Calc Motor ref rad/s
         wheel_angular_velocities = np.zeros(DriveWheel.NUM_DRIVE_WHEELS)
         wheel_angular_velocities[DriveWheel.LEFT] = (
             linear_velocity / (self.diameter * 0.5)) - (self.tread / self.diameter) * angular_velocity # [rad/s]
         wheel_angular_velocities[DriveWheel.RIGHT] = (
             linear_velocity / (self.diameter * 0.5)) + (self.tread / self.diameter) * angular_velocity # [rad/s]
+        
+        #前進時のみPD制御の補正を左右に加える (菅澤)
+        if linear_velocity >= 0.0:
+            wheel_angular_velocities[DriveWheel.LEFT]  -= u_pd
+            wheel_angular_velocities[DriveWheel.RIGHT] += u_pd
+        
+        #値が処理の途中で変化しないようにに変数に代入してから使う
+        left_w  = wheel_angular_velocities[DriveWheel.LEFT]
+        right_w = wheel_angular_velocities[DriveWheel.RIGHT]
+        
+        #左右の回転方向が逆になる場合は負の指令値を8.00rad/sに固定
+        if left_w * right_w < 0.0:
+            if left_w < 0.0:
+                wheel_angular_velocities[DriveWheel.LEFT] = 8.00
+            if right_w < 0.0:
+                wheel_angular_velocities[DriveWheel.RIGHT] = 8.00
+        
+        #以下は変更なし
         minute_to_second = 60.
         rpm = wheel_angular_velocities * (minute_to_second / (2. * np.pi))
         if rpm[DriveWheel.LEFT] * rpm[DriveWheel.RIGHT] < 0.0:
