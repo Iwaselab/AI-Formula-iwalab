@@ -36,6 +36,12 @@ class MotorController(Node):
         self.frame_msg.dlc = 8                         # Data length
         self.control_timer = self.create_timer(self.pd_dt, self.control_loop_callback)
 
+        # PD制御用変数初期化 (菅澤)
+        self.omega_now = 0.0     # IMUから取得する現在のヨーレート [rad/s]
+        self.omega_ref = 0.0     # 目標ヨーレート [rad/s]
+        self.e_prev = 0.0        # 1周期前の差
+        self.u_pd = 0.0          # 出力 [rad/s]
+
     def get_ros_params(self):
         self.diameter = get_ros_parameter(self, "wheel.diameter")
         self.tread = get_ros_parameter(self, "wheel.tread")
@@ -48,12 +54,6 @@ class MotorController(Node):
         self.kd = get_ros_parameter(self, "pd.kd")
         self.max_output = get_ros_parameter(self, "pd.max_output")
         self.min_output = get_ros_parameter(self, "pd.min_output")
-
-        # --- PD control用の永続変数(菅澤) ---
-        self.omega_now = 0.0     # IMUから取得する現在のヨーレート [rad/s]
-        self.omega_ref = 0.0     # 目標ヨーレート [rad/s]
-        self.e_prev = 0.0        # 1周期前の差
-        self.u_pd = 0.0          # 出力 [rad/s]
 
     def twist_callback(self, msg):
         self.omega_ref = msg.angular.z  # 目標ヨーレート更新(菅澤)
