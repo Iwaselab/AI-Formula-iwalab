@@ -34,12 +34,20 @@ class MotorController(Node):
         self.frame_msg.header.frame_id = "can0"        # Default can0
         self.frame_msg.id = 0x210                      # MotorController CAN ID : 0x210
         self.frame_msg.dlc = 8                         # Data length
+        self.control_timer = self.create_timer(self.pd_dt, self.control_loop_callback)
 
     def get_ros_params(self):
         self.diameter = get_ros_parameter(self, "wheel.diameter")
         self.tread = get_ros_parameter(self, "wheel.tread")
         self.gear_ratio = get_ros_parameter(self, "wheel.gear_ratio")
         self.publish_timer_loop_duration = get_ros_parameter(self, "publish_timer_loop_duration")
+
+        # --- PD params (菅澤)---
+        self.pd_dt = get_ros_parameter(self, "pd.dt")
+        self.kp = get_ros_parameter(self, "pd.kp")
+        self.kd = get_ros_parameter(self, "pd.kd")
+        self.max_output = get_ros_parameter(self, "pd.max_output")
+        self.min_output = get_ros_parameter(self, "pd.min_output")
 
     def twist_callback(self, msg):
         rpm = self.toRefRPM(msg.linear.x, msg.angular.z)
@@ -59,6 +67,10 @@ class MotorController(Node):
 
     def publish_canframe_callback(self):
         self.can_pub.publish(self.frame_msg)
+
+    def control_loop_callback(self):
+        #PD制御量を計算する関数
+        pass
 
 #  Velocity -> RPM Calc
 #  V_right = (V + tread/2 * w)   [m/s]

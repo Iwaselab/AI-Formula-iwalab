@@ -1,3 +1,10 @@
 /**:
   ros__parameters:
     publish_timer_loop_duration: 0.01 #[sec]
+
+  pd:
+    t: 0.01               # 制御周期 [s]
+    p: 100.0
+    kd: 0.00
+    max_output: 2.0        # 出力上限（単位は後で決める：例 rad/s の補正量）
+    min_output: -2.0       # 出力下限
