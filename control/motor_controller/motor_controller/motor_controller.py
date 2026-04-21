@@ -42,7 +42,7 @@ class MotorController(Node):
     def twist_callback(self, msg):
         rpm = self.toRefRPM(msg.linear.x, msg.angular.z)
         cmd_left = self.toCanCmd(rpm[DriveWheel.LEFT])
-        cmd_right = self.toCanCmd(rpm[DriveWheel.RIGHT])        
+        cmd_right = self.toCanCmd(rpm[DriveWheel.RIGHT])
         can_data = cmd_right + cmd_left
         self.frame_msg.data = can_data
 
@@ -60,14 +60,9 @@ class MotorController(Node):
     def toRefRPM(self, linear_velocity, angular_velocity):  # Calc Motor ref rad/s
         wheel_angular_velocities = np.zeros(DriveWheel.NUM_DRIVE_WHEELS)
         wheel_angular_velocities[DriveWheel.LEFT] = (
-            linear_velocity / (self.diameter * 0.5)) - (self.tread / self.diameter) * angular_velocity - (25 * angular_velocity) # [rad/s]
+            linear_velocity / (self.diameter * 0.5)) - (self.tread / self.diameter) * angular_velocity  # [rad/s]
         wheel_angular_velocities[DriveWheel.RIGHT] = (
-            linear_velocity / (self.diameter * 0.5)) + (self.tread / self.diameter) * angular_velocity + (25 * angular_velocity)
-        if wheel_angular_velocities[DriveWheel.LEFT] * wheel_angular_velocities[DriveWheel.RIGHT] < 0.0:
-            if wheel_angular_velocities[DriveWheel.LEFT] < 0.0:
-                wheel_angular_velocities[DriveWheel.LEFT] = 8.50
-            if wheel_angular_velocities[DriveWheel.RIGHT] < 0.0:
-                wheel_angular_velocities[DriveWheel.RIGHT] = 8.50
+            linear_velocity / (self.diameter * 0.5)) + (self.tread / self.diameter) * angular_velocity  # [rad/s]
         minute_to_second = 60.
         rpm = wheel_angular_velocities * (minute_to_second / (2. * np.pi))
         if rpm[DriveWheel.LEFT] * rpm[DriveWheel.RIGHT] < 0.0:

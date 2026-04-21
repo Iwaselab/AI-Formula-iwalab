@@ -6,7 +6,7 @@ This package is based on [YOLOP](https://github.com/hustvl/YOLOP)
 
 ## YOLOP
 ```
-cd ~/workspace/ros/src/EC7D_AIformula_Control/perception/yolop/yolop
+cd ~/workspace/ros/src/aiformula/perception/yolop/yolop
 ```
 ### requirements
 See requirements.txt for additional dependencies and version requirements.
@@ -52,14 +52,20 @@ python3 setup.py install --user
 ### Environment setup
 Make sure you have pip and setuptools installed. Then:
 ```
-cd ${EC7D_AIformula_Control}/perception/yolop
+cd ${aiformula}/perception/yolop
 pip install -e .
 ```
 
 Set up your environment by export the following command.
 
 ```sh
-export PYTHONPATH=${EC7D_AIformula_Control}/perception/yolop:$PYTHONPATH
+export PYTHONPATH=${aiformula}/perception/yolop:$PYTHONPATH
+```
+
+If you encounter a "No module named 'lib'" error, export the following command.
+
+```sh
+export PYTHONPATH=${aiformula}/perception/yolop/yolop:$PYTHONPATH
 ```
 
 ## Running Example:

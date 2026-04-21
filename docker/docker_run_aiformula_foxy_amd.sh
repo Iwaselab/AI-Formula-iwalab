@@ -4,7 +4,7 @@ USER_NAME=aiformula
 HOST_NAME=aiformula
 
 docker run -it \
-    -v ${SCRIPT_DIR}/..:/home/${USER_NAME}/workspace/ros/src/EC7D_AIformula_Control \
+    -v ${SCRIPT_DIR}/..:/home/${USER_NAME}/workspace/ros/src/aiformula \
     --add-host ${HOST_NAME}:127.0.0.1 \
     --hostname ${HOST_NAME} \
     --ipc host \

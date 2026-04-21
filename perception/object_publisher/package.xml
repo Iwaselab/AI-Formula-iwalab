@@ -14,7 +14,7 @@
   <depend>OpenCV</depend>
   <depend>common_cpp</depend>
   <depend>common_python</depend>
-  <depend>vehicle</depend>
+  <depend>sample_vehicle</depend>
   <depend>aiformula_interfaces</depend>
   <depend>rviz_aiformula_plugins</depend>
 
