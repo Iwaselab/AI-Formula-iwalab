@@ -1,4 +1,21 @@
-/**:
+/aiformula_control/motor_controller:
   ros__parameters:
-    publish_timer_loop_duration: 0.01 #[sec]
-      
+    publish_timer_loop_duration: 0.01
+
+    pd:
+      dt: 0.01
+      kp: 450.0
+      ki: 10.0
+      kd: 3.0
+      #kp: 250.0
+      #ki: 7.0
+      #kd: 3.0  
+      max_output: 50.0
+      min_output: -50.0
+
+      kp_v: 300.0
+      #kp_v: 30.0
+      ki_v: 15.0
+      kd_v: 1.0
+      max_output_v: 10.0
+      min_output_v: -10.0
