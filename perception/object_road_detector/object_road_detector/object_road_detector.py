@@ -43,6 +43,8 @@ class ObjectRoadDetector(Node):
         stdev = get_ros_parameter(self, 'normalization.standard_deviation')
         self.confidence_threshold = get_ros_parameter(self, 'confidence_threshold')
         self.iou_threshold = get_ros_parameter(self, 'iou_threshold')
+        # New param: allow disabling object detection when using an external YOLO node
+        self.enable_object_detection = bool(get_ros_parameter(self, 'enable_object_detection'))
         return device, path_to_weights, mean, stdev
 
     def init_detector(self, device: str, path_to_weights: str, mean: float, stdev: float) -> None:
@@ -82,12 +84,19 @@ class ObjectRoadDetector(Node):
             object_raw_outputs, _, ll_seg_raw_outputs = self.detector(input_image)  # ll_seg : lane line segmentation
         ll_seg_mask = self.decode_lane_line_output(
             ll_seg_raw_outputs, *input_image_size, ratio_to_padded, pad_x_half, pad_y_half)
-        bbox_detections = self.decode_object_output(object_raw_outputs)
-        # Publish
+        # Publish lane results always
         self.publish_lane_line(ll_seg_mask, msg.header)
-        self.publish_rects(input_image_size, undistorted_image.shape, deepcopy(bbox_detections), msg.header)
-        self.publish_result_image(undistorted_image, input_image_size, ll_seg_mask,
-                                  bbox_detections, msg.header)
+
+        # Publish objects only if enabled (allows external YOLO node to handle detection)
+        if self.enable_object_detection:
+            bbox_detections = self.decode_object_output(object_raw_outputs)
+            self.publish_rects(input_image_size, undistorted_image.shape, deepcopy(bbox_detections), msg.header)
+            self.publish_result_image(undistorted_image, input_image_size, ll_seg_mask,
+                                      bbox_detections, msg.header)
+        else:
+            # When object detection is disabled, still publish annotated image with lane drawings
+            self.publish_result_image(undistorted_image, input_image_size, ll_seg_mask,
+                                      torch.zeros((0, 6)), msg.header)
 
     def decode_lane_line_output(self, ll_seg_raw: torch.Tensor, height: int, width: int, ratio_to_padded: float, pad_x_half: np.float64, pad_y_half: np.float64) -> np.ndarray:
         ROUNDING_ADJUSTMENT = 0.1

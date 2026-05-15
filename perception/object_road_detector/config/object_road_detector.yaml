@@ -8,3 +8,4 @@
           
     confidence_threshold: 0.80
     iou_threshold: 0.6
+    enable_object_detection: false

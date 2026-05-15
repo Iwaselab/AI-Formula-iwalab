@@ -1,0 +1,5 @@
+/**:
+  ros__parameters:
+    use_device: 'cpu'
+    confidence_threshold: 0.25
+    iou_threshold: 0.45
