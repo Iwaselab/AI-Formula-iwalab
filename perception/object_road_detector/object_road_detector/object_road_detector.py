@@ -2,20 +2,24 @@ from copy import deepcopy
 from typing import Tuple
 
 from cv_bridge import CvBridge, CvBridgeError
+import cv2
 import numpy as np
 import torch
-import torchvision.transforms as transforms
 
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
 from std_msgs.msg import Header
 
-from yolop.lib.config import cfg
-from yolop.lib.core.general import non_max_suppression, scale_coords
-from yolop.lib.models import get_net
-from yolop.lib.utils import letterbox_for_img
-from yolop.lib.utils.utils import select_device
+from utils.utils import (
+    select_device,
+    split_for_trace_model,
+    non_max_suppression,
+    scale_coords,
+    letterbox,
+    driving_area_mask,
+    lane_line_mask,
+)
 
 from aiformula_interfaces.msg import RectMultiArray
 from common_python.get_ros_parameter import get_ros_parameter
@@ -49,21 +53,18 @@ class ObjectRoadDetector(Node):
 
     def init_detector(self, device: str, path_to_weights: str, mean: float, stdev: float) -> None:
         self.load_detector(device, path_to_weights)
-        # Normalization and Tensor
-        self.transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize(mean, stdev),
-        ])
+        # Store normalization parameters for potential use
+        self.normalization_mean = mean
+        self.normalization_stdev = stdev
 
     def load_detector(self, device: str, path_to_weights: str) -> None:
         self.use_device = select_device(device=device)
         self.use_half_precision = (self.use_device.type != 'cpu')  # half precision only supported on CUDA
-        self.detector = get_net(cfg)
-        checkpoint = torch.load(path_to_weights, map_location=self.use_device)
-        self.detector.load_state_dict(checkpoint['state_dict'])
-        if self.use_device.type == 'cuda':
-            self.detector = self.detector.to(self.use_device)
-            self.detector.half()  # to FP16
+        # YOLOPv2 uses TorchScript JIT model
+        self.detector = torch.jit.load(path_to_weights)
+        self.detector = self.detector.to(self.use_device)
+        if self.use_half_precision:
+            self.detector = self.detector.half()  # to FP16
         self.detector.eval()
 
     def image_callback(self, msg: Image) -> None:
@@ -71,48 +72,86 @@ class ObjectRoadDetector(Node):
             undistorted_image = self.cv_bridge.imgmsg_to_cv2(msg, 'bgr8')
         except CvBridgeError as e:
             self.get_logger().warning(f"CvBridgeError occurred: {str(e)}")
-        # Padded resize
-        padded_image, (ratio_to_padded, _), (pad_x_half, pad_y_half) = letterbox_for_img(undistorted_image,
-                                                                                         new_shape=640, auto=True)  # ratio_to_padded (width, height)
-        normalized_tensor = self.transform(padded_image).to(self.use_device)
-        # Input image
-        input_image = normalized_tensor.half() if self.use_half_precision else normalized_tensor.float()  # uint8 to fp16/32
-        input_image = input_image.unsqueeze(0)
-        input_image_size = input_image.shape[2:]
+            return
+        
+        # Padded resize using letterbox
+        img_size = 640
+        stride = 32
+        padded_image, ratio, (dw, dh) = letterbox(undistorted_image, img_size, stride=stride, auto=True)
+        
+        # Convert image to tensor (BGR to RGB, and normalize)
+        img_tensor = padded_image[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB, HWC to CHW
+        img_tensor = np.ascontiguousarray(img_tensor)
+        img_tensor = torch.from_numpy(img_tensor).to(self.use_device)
+        img_tensor = img_tensor.half() if self.use_half_precision else img_tensor.float()
+        img_tensor = img_tensor / 255.0  # 0-255 to 0.0-1.0
+        
+        # Add batch dimension
+        if img_tensor.ndimension() == 3:
+            img_tensor = img_tensor.unsqueeze(0)
+        
+        input_image_size = img_tensor.shape[2:]
+        
         # Inference
         with torch.no_grad():
-            object_raw_outputs, _, ll_seg_raw_outputs = self.detector(input_image)  # ll_seg : lane line segmentation
-        ll_seg_mask = self.decode_lane_line_output(
-            ll_seg_raw_outputs, *input_image_size, ratio_to_padded, pad_x_half, pad_y_half)
+            # YOLOPv2 output: [pred, anchor_grid], seg, ll
+            [pred, anchor_grid], seg, ll = self.detector(img_tensor)
+            
+            # Process YOLOv3 trace output
+            pred = split_for_trace_model(pred, anchor_grid)
+        
+        # Extract lane line mask
+        ll_seg_mask = lane_line_mask(ll)
+        ll_seg_mask_resized = self.decode_lane_line_output(
+            ll_seg_mask, undistorted_image.shape, ratio, (dw, dh))
+        
         # Publish lane results always
-        self.publish_lane_line(ll_seg_mask, msg.header)
+        self.publish_lane_line(ll_seg_mask_resized, msg.header)
 
         # Publish objects only if enabled (allows external YOLO node to handle detection)
         if self.enable_object_detection:
-            bbox_detections = self.decode_object_output(object_raw_outputs)
+            bbox_detections = self.decode_object_output(pred)
             self.publish_rects(input_image_size, undistorted_image.shape, deepcopy(bbox_detections), msg.header)
-            self.publish_result_image(undistorted_image, input_image_size, ll_seg_mask,
+            self.publish_result_image(undistorted_image, input_image_size, ll_seg_mask_resized,
                                       bbox_detections, msg.header)
         else:
             # When object detection is disabled, still publish annotated image with lane drawings
-            self.publish_result_image(undistorted_image, input_image_size, ll_seg_mask,
+            self.publish_result_image(undistorted_image, input_image_size, ll_seg_mask_resized,
                                       torch.zeros((0, 6)), msg.header)
 
-    def decode_lane_line_output(self, ll_seg_raw: torch.Tensor, height: int, width: int, ratio_to_padded: float, pad_x_half: np.float64, pad_y_half: np.float64) -> np.ndarray:
-        ROUNDING_ADJUSTMENT = 0.1
-        top, bottom = round(pad_y_half - ROUNDING_ADJUSTMENT), round(pad_y_half + ROUNDING_ADJUSTMENT)
-        left, right = round(pad_x_half - ROUNDING_ADJUSTMENT), round(pad_x_half + ROUNDING_ADJUSTMENT)
-        ll_predict = ll_seg_raw[:, :, top:(height-bottom), left:(width-right)]
-        ll_seg_mask_raw = torch.nn.functional.interpolate(
-            ll_predict, scale_factor=int(1.0/ratio_to_padded), mode='bilinear')
-        _, ll_seg_map = torch.max(ll_seg_mask_raw, dim=1)
-        ll_seg_mask = np.array(ll_seg_map.int().squeeze().cpu().numpy(), dtype=np.uint8)
-        return ll_seg_mask
+    def decode_lane_line_output(self, ll_seg_mask: np.ndarray, original_image_shape: Tuple[int, int, int], ratio: Tuple[float, float], padding: Tuple[float, float]) -> np.ndarray:
+        """
+        Resize lane line segmentation mask to original image size.
+        
+        Args:
+            ll_seg_mask: Lane line segmentation mask from YOLOPv2 (already resized by lane_line_mask)
+            original_image_shape: Shape of original image (height, width, channels)
+            ratio: Scale ratio (r, r) from letterbox
+            padding: Padding values (dw, dh) from letterbox
+        
+        Returns:
+            Resized lane line mask matching original image size
+        """
+        # ll_seg_mask is already processed by lane_line_mask(), need to reverse letterbox operation
+        h_orig, w_orig = original_image_shape[:2]
+        
+        # Remove padding and resize to original size
+        # Note: lane_line_mask already handles some resizing, just resize to original dimensions
+        ll_seg_mask_resized = cv2.resize(ll_seg_mask.astype(np.uint8), (w_orig, h_orig), interpolation=cv2.INTER_NEAREST)
+        return ll_seg_mask_resized
 
-    def decode_object_output(self, object_raw_outputs: Tuple[torch.Tensor, list]) -> torch.Tensor:
-        raw_detections, _ = object_raw_outputs
+    def decode_object_output(self, pred: torch.Tensor) -> torch.Tensor:
+        """
+        Apply NMS to predictions from YOLOPv2.
+        
+        Args:
+            pred: Predictions tensor from split_for_trace_model
+        
+        Returns:
+            Detections tensor after NMS
+        """
         batched_detections = non_max_suppression(
-            raw_detections,
+            pred.unsqueeze(0) if pred.ndim == 2 else pred,
             conf_thres=self.confidence_threshold,
             iou_thres=self.iou_threshold,
             classes=None,

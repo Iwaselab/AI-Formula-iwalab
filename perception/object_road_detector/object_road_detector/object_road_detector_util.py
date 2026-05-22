@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 import torch
 
-from yolop.lib.core.general import scale_coords
+from utils.utils import scale_coords
 
 from aiformula_interfaces.msg import Rect
 
