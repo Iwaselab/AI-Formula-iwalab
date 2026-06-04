@@ -43,6 +43,7 @@ control:
   output_can_data: "/aiformula_control/motor_controller/reference_signal"
 
 visualization:
-  annotated_image: "/aiformula_visualization/object_road_detector/annotated_image"
+  annotated_image: "/aiformula_visualization/object_road_detector/annotated_image_ll"
+  annotated_image_yolo: "/aiformula_visualization/yolo_object_detector/annotated_image_bb"
   aiformula_pilot: "/aiformula_visualization/zed/left_image/compressed"
   unfiltered_object: "/aiformula_visualization/object_publisher/unfiltered_object"

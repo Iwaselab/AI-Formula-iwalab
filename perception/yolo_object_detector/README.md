@@ -1,30 +1,11 @@
 # yolo_object_detector
 
-YOLO11-based object detection node for AI Formula.
+AI Formula用のYOLO11ベースの物体検出ノードやで。
 
-This package publishes bounding boxes as `aiformula_interfaces/msg/RectMultiArray` on the configured bbox topic.
+## 動作
 
-## Behavior
+デフォルトの重みファイルは`launch/yolo_object_detector.launch.py​​`で設定されるやで。他の重みを使う場合、２０行目を書き換えるやで。
 
-- The default weight file is set in `launch/yolo_object_detector.launch.py`.
-- The node searches the installed package `weights/` directory first.
-- If the installed copy is missing, it also searches the workspace source tree under `src/**/perception/yolo_object_detector/weights/`.
-- If `weight_path` is not provided, startup fails with an explicit error.
+## 実行方法
 
-## Run
-
-```bash
-source install/setup.bash
 ros2 launch yolo_object_detector yolo_object_detector.launch.py
-```
-
-To use a different model:
-
-```bash
-ros2 launch yolo_object_detector yolo_object_detector.launch.py weight_path:=/absolute/path/to/best.pt
-```
-
-## Notes
-
-- Put custom weights in `perception/yolo_object_detector/weights/` if you want the source tree to be used.
-- The node does not auto-download weights.

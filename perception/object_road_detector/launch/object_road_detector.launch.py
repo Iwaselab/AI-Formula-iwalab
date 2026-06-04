@@ -18,7 +18,7 @@ def generate_launch_description():
     # Get yolopv2 weight file path from source directory
     # The weight file is located in yolopv2 package
     yolopv2_weight_path = os.path.expanduser(
-        "/home/iwalab/workspace/ros2_ws_git/src/AI-Formula-iwalab/perception/yolopv2/data/weights/yolopv2.pt"
+        "~/workspace/ros2_ws_git/src/AI-Formula-iwalab/perception/yolopv2/data/weights/yolopv2.pt" #ここで重みのパスを指定
     )
 
     launch_args = (

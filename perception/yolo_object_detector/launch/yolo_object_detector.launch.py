@@ -19,7 +19,7 @@ def generate_launch_description():
             'weight_path',
             default_value=osp.join(get_package_share_directory(PACKAGE_NAME), 'weights', 'yolo11n.pt'),
             description='Path to the weight file under package weights/ or an absolute local path'),
-        DeclareLaunchArgument('use_device', default_value='cpu', description='cuda device or cpu'),
+        DeclareLaunchArgument('use_device', default_value='0', description='cuda device or cpu'),
     )
 
     yolo_node = Node(
@@ -36,7 +36,7 @@ def generate_launch_description():
         remappings=[
             ('sub_image', TOPIC_NAMES['sensing']['zedx']['left_image']['undistorted']),
             ('pub_bbox', TOPIC_NAMES['perception']['objects']['bounding_box']),
-            ('pub_annotated_image', TOPIC_NAMES['visualization']['annotated_image']),
+            ('pub_annotated_image', TOPIC_NAMES['visualization']['annotated_image_yolo']),
         ],
     )
 
