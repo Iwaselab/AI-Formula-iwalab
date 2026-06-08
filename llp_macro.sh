@@ -20,6 +20,15 @@ tmux send-keys -t $SESSION:1 "source install/setup.bash" C-m
 tmux send-keys -t $SESSION:1 "export PYTHONPATH=~/workspace/ros2_ws_git/src/AI-Formula-iwalab/perception/yolopv2:\$PYTHONPATH" C-m
 tmux send-keys -t $SESSION:1 "ros2 launch object_road_detector object_road_detector.launch.py" C-m
 
+# # 1つ目のウィンドウ: object_road_detector(yolop使用)
+# tmux new-window -t $SESSION
+# tmux send-keys -t $SESSION:1 "cd ~/workspace/ros2_ws_git" C-m
+# tmux send-keys -t $SESSION:1 "source /opt/ros/foxy/setup.bash" C-m
+# tmux send-keys -t $SESSION:1 "source install/setup.bash" C-m
+# tmux send-keys -t $SESSION:1 "export PYTHONPATH=~/workspace/ros2_ws_git/src/AI-Formula-iwalab/perception/yolop:\$PYTHONPATH" C-m
+# tmux send-keys -t $SESSION:1 "export PYTHONPATH=~/workspace/ros2_ws_git/src/AI-Formula-iwalab/perception/yolop/yolop:\$PYTHONPATH" C-m
+# tmux send-keys -t $SESSION:1 "ros2 launch object_road_detector_old object_road_detector_old.launch.py" C-m
+
 # 2つ目のウィンドウ: vehicle_tf_broadcaster
 tmux new-window -t $SESSION
 tmux send-keys -t $SESSION:2 "cd ~/workspace/ros2_ws_git" C-m
