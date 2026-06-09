@@ -1,4 +1,5 @@
 # [AI-Formula-iwalab](https://github.com/Iwaselab/AI-Formula-iwalab) 
+# [AI-Formula-iwalab(yolo_object_detector)](https://github.com/Iwaselab/AI-Formula-iwalab/tree/feature/object_detect_yolo) 
 AI Formula is a technical challenge in which robot cars drive autonomously on a race course given a mission. Through competing for speed and intelligence in a real-world environment, AI Formula will provide an opportunity for rising engineers to acquire the skills and technology necessary for next-generation mobility research. This repository is the foundation of the AIFormula system.
 
 ![AIFormula_run](https://github.com/aiformula-support/aiformula/assets/113084733/87766cdd-de1e-4aef-83c6-0bfbcdcc25cb)
