@@ -139,7 +139,7 @@ Visualization Manager:
             Durability Policy: Volatile
             History Policy: Keep Last
             Reliability Policy: Reliable
-            Value: /aiformula_visualization/object_road_detector/annotated_image_ll
+            Value: /aiformula_visualization/detection_fusion/annotated_image_ll
           Value: true
         - Class: rviz_default_plugins/Image
           Enabled: true

@@ -50,11 +50,11 @@ def generate_launch_description():
             ("sub_image",
              TOPIC_NAMES["sensing"]["zedx"]["left_image"]["undistorted"]),
             ("pub_mask_image",
-             TOPIC_NAMES["perception"]["mask_image"]),
+             TOPIC_NAMES["perception"]["mask_image_new"]),
             ("pub_bbox",
              TOPIC_NAMES["perception"]["objects"]["bounding_box"]),
             ("pub_annotated_image",
-             TOPIC_NAMES["visualization"]["annotated_image"]),
+             TOPIC_NAMES["visualization"]["annotated_image_new"]),
         ],
     )
 

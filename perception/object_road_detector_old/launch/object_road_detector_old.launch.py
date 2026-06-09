@@ -18,7 +18,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "weight_path",
             default_value=osp.join(get_package_share_directory(
-                "object_road_detector_old"), "weights", "epoch-200.pth"),
+                "object_road_detector_old"), "weights", "epoch-300.pth"),
             description="Path to the weight pth file."),
         DeclareLaunchArgument(
             "use_device",
@@ -44,11 +44,11 @@ def generate_launch_description():
             ("sub_image",
              TOPIC_NAMES["sensing"]["zedx"]["left_image"]["undistorted"]),
             ("pub_mask_image",
-             TOPIC_NAMES["perception"]["mask_image"]),
+             TOPIC_NAMES["perception"]["mask_image_old"]),
             ("pub_bbox",
              TOPIC_NAMES["perception"]["objects"]["bounding_box"]),
             ("pub_annotated_image",
-             TOPIC_NAMES["visualization"]["annotated_image"]),
+             TOPIC_NAMES["visualization"]["annotated_image_old"]),
         ],
     )
 
