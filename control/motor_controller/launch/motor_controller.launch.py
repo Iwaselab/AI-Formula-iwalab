@@ -21,7 +21,7 @@ def generate_launch_description():
     )
 
     ROS_PARAM_CONFIG = (
-        osp.join(get_package_share_directory("sample_vehicle"), "config", "wheel.yaml"),
+        osp.join(get_package_share_directory("vehicle"), "config", "wheel.yaml"),
         osp.join(PACKAGE_DIR, "config", "motor_controller.yaml"),
     )
     motor_controller = Node(
@@ -34,8 +34,10 @@ def generate_launch_description():
         arguments=["--ros-args", "--log-level", LaunchConfiguration('log_level')],
         parameters=[*ROS_PARAM_CONFIG],
         remappings=[
+            ("sub_imu", TOPIC_NAMES["sensing"]["vectornav"]["imu"]),
             ("sub_speed_command", TOPIC_NAMES["control"]["speed_command"]["multiplexed"]),
             ("pub_can", TOPIC_NAMES["control"]["output_can_data"]),
+            ("sub_can", TOPIC_NAMES["sensing"]["input_can_data"]),  # ← これを追加
         ],
     )
 
