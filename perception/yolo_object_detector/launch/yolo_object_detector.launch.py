@@ -17,7 +17,7 @@ def generate_launch_description():
     launch_args = (
         DeclareLaunchArgument(
             'weight_path',
-            default_value=osp.join(get_package_share_directory(PACKAGE_NAME), 'weights', 'yolo11n.pt'),
+            default_value=osp.join(get_package_share_directory(PACKAGE_NAME), 'weights', 'best.pt'),
             description='Path to the weight file under package weights/ or an absolute local path'),
         DeclareLaunchArgument('use_device', default_value='0', description='cuda device or cpu'),
     )

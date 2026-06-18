@@ -18,7 +18,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "weight_path",
             default_value=osp.join(get_package_share_directory(
-                "object_road_detector_old"), "weights", "epoch-300.pth"),
+                "object_road_detector_old"), "weights", "epoch-600.pth"),
             description="Path to the weight pth file."),
         DeclareLaunchArgument(
             "use_device",
