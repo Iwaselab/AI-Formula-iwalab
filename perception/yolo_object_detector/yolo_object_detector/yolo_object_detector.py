@@ -62,15 +62,26 @@ class YoloObjectDetector(Node):
 
         cv_image_copy = cv_image.copy()
 
-        for box in boxes.xyxy.tolist():
+        xyxy_list = boxes.xyxy.tolist()
+        cls_list = boxes.cls.tolist()
+        conf_list = boxes.conf.tolist()
+
+        for box, cls_id, conf in zip(xyxy_list, cls_list, conf_list):
             x1, y1, x2, y2 = [int(v) for v in box]
+            class_id = int(cls_id)
+            class_name = self.model.names.get(class_id, str(class_id))
+            label = f'{class_name} {conf:.2f}'
             cv2.rectangle(cv_image_copy, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            cv2.putText(cv_image_copy, label, (x1, y1 - 5),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
 
             rect = Rect()
             rect.x = float(x1)
             rect.y = float(y1)
             rect.width = float(x2 - x1)
             rect.height = float(y2 - y1)
+            rect.class_id = class_id
+            rect.confidence = float(conf)
             bbox_msg.rects.append(rect)
 
         self.rects_pub.publish(bbox_msg)

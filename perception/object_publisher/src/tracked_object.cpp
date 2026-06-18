@@ -35,8 +35,8 @@ void TrackedObject::printStaticMembers() {
 }
 
 TrackedObject::TrackedObject(const int& id, const float& left_x, const float& left_y, const float& right_x,
-                             const float& right_y, const double& timestamp)
-    : kf_(cv::KalmanFilter(4, 4, 0)), id_(id), last_seen_time_(timestamp), confidence_(1.0) {
+                             const float& right_y, const double& timestamp, const int32_t& class_id)
+    : kf_(cv::KalmanFilter(4, 4, 0)), id_(id), last_seen_time_(timestamp), confidence_(1.0), class_id_(class_id) {
     cv::setIdentity(kf_.transitionMatrix);
     cv::setIdentity(kf_.measurementMatrix);
 
@@ -57,11 +57,14 @@ float TrackedObject::computeDistanceSquared(const float& x_in, const float& y_in
 }
 
 void TrackedObject::update(const float& left_x, const float& left_y, const float& right_x, const float& right_y,
-                           const double& current_time) {
+                           const double& current_time, const int32_t& class_id) {
     cv::Mat measurement = (cv::Mat_<float>(4, 1) << left_x, left_y, right_x, right_y);
     kf_.predict();
     kf_.correct(measurement);
     last_seen_time_ = current_time;
+    if (class_id >= 0) {
+        class_id_ = class_id;
+    }
 }
 
 bool TrackedObject::isExpired(const double& current_time) {
