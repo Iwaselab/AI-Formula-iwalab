@@ -25,6 +25,12 @@ class ObjectRiskCalculator:
             node, "object_risk_potential.correlation_coefficient")
         self.object_risk_gain = get_ros_parameter(
             node, "object_risk_potential.gain")
+        self.obstacle_class_ids = get_ros_parameter(
+            node, "object_risk_potential.obstacle_class_ids")
+        self.crosswalk_class_ids = get_ros_parameter(
+            node, "object_risk_potential.crosswalk_class_ids")
+        self.crosswalk_gain = get_ros_parameter(
+            node, "object_risk_potential.crosswalk_gain")
 
     def init_connections(self, node: Node, buffer_size):
         self.object_position_sub = node.create_subscription(
@@ -61,16 +67,27 @@ class ObjectRiskCalculator:
                                  [cov_xy, var_y]])
 
         obj_xy = np.array([[obj.x, obj.y] for obj in objects])
-        obj_width = np.array([obj.width for obj in objects])
-        obj_conf = np.array([obj.confidence for obj in objects])
-        obj_weight = self.object_risk_gain * obj_width * (obj_conf ** 2)
+        obj_weights = []
+        for obj in objects:
+            if obj.class_id in self.obstacle_class_ids:
+                # 障害物 -> 正のリスク (山)
+                weight = self.object_risk_gain * obj.width * (obj.confidence ** 2)
+            elif obj.class_id in self.crosswalk_class_ids:
+                # 横断歩道 -> 負のリスク (谷)
+                weight = -self.crosswalk_gain * obj.width * (obj.confidence ** 2)
+            else:
+                # 信号などその他 -> MPCの経路評価からは除外
+                weight = 0.0
+            obj_weights.append(weight)
+
+        obj_weights = np.array(obj_weights)
 
         risks = []
 
         for seek_points_idx in range(num_seek_points):
             gaussian_mean = seek_positions[:, seek_points_idx]
             risk_values = multivariate_normal.pdf(obj_xy, mean=gaussian_mean, cov=gaussian_cov)
-            total_risk = np.sum(risk_values * obj_weight)
+            total_risk = np.sum(risk_values * obj_weights)
             risks.append(total_risk)
 
         return np.array(risks)

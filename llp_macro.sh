@@ -78,13 +78,20 @@ tmux send-keys -t $SESSION:9 "source /opt/ros/foxy/setup.bash" C-m
 tmux send-keys -t $SESSION:9 "source install/setup.bash" C-m
 tmux send-keys -t $SESSION:9 "rviz2 -d ~/workspace/ros2_ws_git/src/AI-Formula-iwalab/perception/lane_line_publisher/rviz/lane_line_publisher.rviz" C-m
 
-# # 9つ目のウィンドウ: road_surface_segmenter
+# 10つ目のウィンドウ: extremum_seeking_mpc
+tmux new-window -t $SESSION
+tmux send-keys -t $SESSION:10 "cd ~/workspace/ros2_ws_git" C-m
+tmux send-keys -t $SESSION:10 "source /opt/ros/foxy/setup.bash" C-m
+tmux send-keys -t $SESSION:10 "source install/setup.bash" C-m
+tmux send-keys -t $SESSION:10 "ros2 launch extremum_seeking_mpc extremum_seeking_mpc.launch.py" C-m
+
+# # 11つ目のウィンドウ: road_surface_segmenter
 # tmux new-window -t $SESSION
-# tmux send-keys -t $SESSION:9 "cd ~/workspace/ros2_ws_git" C-m
-# tmux send-keys -t $SESSION:9 "source /opt/ros/foxy/setup.bash" C-m
-# tmux send-keys -t $SESSION:9 "source install/setup.bash" C-m
-# tmux send-keys -t $SESSION:9 "export PYTHONPATH=~/workspace/ros2_ws_git/src/AI-Formula-iwalab/perception/yolopv2:\$PYTHONPATH" C-m
-# tmux send-keys -t $SESSION:9 "ros2 launch road_surface_segmenter road_surface_segmenter.launch.py" C-m
+# tmux send-keys -t $SESSION:11 "cd ~/workspace/ros2_ws_git" C-m
+# tmux send-keys -t $SESSION:11 "source /opt/ros/foxy/setup.bash" C-m
+# tmux send-keys -t $SESSION:11 "source install/setup.bash" C-m
+# tmux send-keys -t $SESSION:11 "export PYTHONPATH=~/workspace/ros2_ws_git/src/AI-Formula-iwalab/perception/yolopv2:\$PYTHONPATH" C-m
+# tmux send-keys -t $SESSION:11 "ros2 launch road_surface_segmenter road_surface_segmenter.launch.py" C-m
 
 # tmuxセッションにアタッチ
 tmux attach-session -t $SESSION

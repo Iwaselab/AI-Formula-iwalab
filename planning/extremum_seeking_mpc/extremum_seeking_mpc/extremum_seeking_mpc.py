@@ -134,6 +134,13 @@ class ExtremumSeekingMpc(Node):
             self.tf_broadcaster.sendTransform(ts)
 
     def publish_cmd_vel_timer_callback(self):
+        if self.pose_predictor.ego_current_velocity is None:
+            if not getattr(self, 'waiting_for_odom_logged', False):
+                self.get_logger().warning("Waiting for odometry message on topic 'sub_odom'...")
+                self.waiting_for_odom_logged = True
+            return
+        self.waiting_for_odom_logged = False
+
         # ---- start extremum_seeking_mpc sequence ----
         ego_positions, seek_positions = self.predict_ego_position(self.curvatures)
 
