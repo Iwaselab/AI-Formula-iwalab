@@ -1,8 +1,7 @@
 #!/bin/bash
 # ROS2 bagファイルから画像を抽出するスクリプト
-
 set -e
-
+ 
 # 使用方法を表示する関数
 show_usage() {
     echo "使用方法: $0 <bag_directory> <image_topic> [output_directory]"
@@ -14,31 +13,31 @@ show_usage() {
     echo "  ros2 bag info /path/to/bag"
     exit 1
 }
-
+ 
 # 引数の確認
 if [ $# -lt 2 ]; then
     show_usage
 fi
-
+ 
 BAG_DIR="$1"
 IMAGE_TOPIC="$2"
-OUTPUT_DIR="${3:-/home/fuga/AIFMovie/images/extracted}"
-
+OUTPUT_DIR="${3:-/home/iwalab/AIFMovie/extracted/crossload2}"
+ 
 echo "ROS2 bag画像抽出スクリプト"
 echo "=========================="
 echo "Bagディレクトリ: $BAG_DIR"
 echo "画像トピック: $IMAGE_TOPIC"
 echo "出力ディレクトリ: $OUTPUT_DIR"
 echo ""
-
+ 
 # 出力ディレクトリの作成
 mkdir -p "$OUTPUT_DIR"
-
+ 
 # bagファイルの情報を表示
 echo "Bagファイル情報:"
-ros2 bag info "$BAG_DIR"
+ros2 bag info --storage mcap "$BAG_DIR"
 echo ""
-
+ 
 # 画像保存ノードを作成（Python実装）
 cat > /tmp/image_saver_node.py << 'EOF'
 #!/usr/bin/env python3
@@ -51,7 +50,7 @@ import os
 import sys
 from pathlib import Path
 from rclpy.qos import qos_profile_sensor_data
-
+ 
 class ImageSaver(Node):
     def __init__(self, topic_name, output_dir):
         super().__init__('image_saver')
@@ -61,7 +60,7 @@ class ImageSaver(Node):
         self.subscription = self.create_subscription(
             Image, topic_name, self.image_callback, qos_profile_sensor_data)
         self.get_logger().info(f'画像保存開始: {topic_name} -> {output_dir}')
-    
+ 
     def image_callback(self, msg):
         try:
             cv_image = self.bridge.imgmsg_to_cv2(msg, 'bgr8')
@@ -73,12 +72,12 @@ class ImageSaver(Node):
             self.get_logger().info(f'保存: {filename} (計{self.saved_count}枚)')
         except Exception as e:
             self.get_logger().error(f'保存エラー: {e}')
-
+ 
 def main():
     rclpy.init()
     topic = sys.argv[1]
     output_dir = sys.argv[2]
-    
+ 
     saver = ImageSaver(topic, output_dir)
     try:
         rclpy.spin(saver)
@@ -87,38 +86,40 @@ def main():
     finally:
         print(f"\n総保存枚数: {saver.saved_count}")
         rclpy.shutdown()
-
+ 
 if __name__ == '__main__':
     main()
 EOF
-
+ 
 # 画像保存ノードをバックグラウンドで開始
 echo "画像保存ノードを開始中..."
 python3 /tmp/image_saver_node.py "$IMAGE_TOPIC" "$OUTPUT_DIR" &
 SAVER_PID=$!
-
+ 
 # 少し待機
 sleep 2
-
-# bagファイルを再生（速度を落とし、--clock, --disable-keyboard-controlを追加）
-echo "Bagファイルを再生中...（0.2倍速, --clock, --disable-keyboard-control）"
-ros2 bag play "$BAG_DIR" --topics "$IMAGE_TOPIC" -r 0.2 --clock --disable-keyboard-control
-
+ 
+# bagファイルを再生
+# --storage mcap : mcapフォーマットを明示指定
+# --clock / --disable-keyboard-control はHumble以降のオプションのため削除
+echo "Bagファイルを再生中...（0.2倍速）"
+ros2 bag play --storage mcap "$BAG_DIR" --topics "$IMAGE_TOPIC" -r 0.2
+ 
 # 画像保存ノードを停止
 echo "画像保存ノードを停止中..."
 kill $SAVER_PID 2>/dev/null || true
 wait $SAVER_PID 2>/dev/null || true
-
+ 
 # 結果を表示
 echo ""
 echo "抽出完了！"
 echo "出力先: $OUTPUT_DIR"
 echo "保存された画像数:"
 ls -1 "$OUTPUT_DIR"/*.jpg 2>/dev/null | wc -l || echo "0"
-
+ 
 # クリーンアップ
 rm -f /tmp/image_saver_node.py
-
+ 
 echo ""
 echo "画像ファイル一覧:"
 ls -la "$OUTPUT_DIR"/ 2>/dev/null || echo "画像が見つかりません"
