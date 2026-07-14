@@ -1,117 +1,477 @@
+from dataclasses import dataclass
+from typing import Any, List, Sequence, Tuple
 import numpy as np
-from typing import List
-
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
-
 from common_python.get_ros_parameter import get_ros_parameter
 from .util import Position2d, Pose, Velocity
 
 
+@dataclass
+class DynamicState:
+
+    x: float = 0.0
+    y: float = 0.0
+    yaw: float = 0.0
+    linear_velocity: float = 0.0
+    yaw_rate: float = 0.0
+
+
 class PosePredictor:
 
-    def __init__(self, node: Node, horizon_times: List[float], seek_y_positions: np.ndarray, buffer_size: int):
+    def __init__(
+        self,
+        node: Node,
+        horizon_times: List[float],
+        seek_y_positions: np.ndarray,
+        buffer_size: int,
+    ):
+        self.node = node
+
         self.init_parameters(node)
         self.init_connections(node, buffer_size)
-        self.ego_current_velocity = None
-        self.horizon_durations = np.diff(horizon_times, prepend=0)
-        self.horizon_length = len(horizon_times)
-        self.seek_y_positions = seek_y_positions
 
-    def init_parameters(self, node: Node):
-        self.curvature_radius_maximum = get_ros_parameter(
-            node, "curvature_radius_maximum")
+        self.ego_current_velocity = Velocity(linear=0.0, angular=0.0)
+        self.has_received_odometry = False
 
-    def init_connections(self, node: Node, buffer_size: int):
-        self.actucal_speed_sub = node.create_subscription(
-            Odometry, 'sub_odom', self.odometry_callback, buffer_size)
+        self.horizon_times = np.asarray(horizon_times, dtype=float)
+
+        if self.horizon_times.ndim != 1:
+            raise ValueError("horizon_times must be a one-dimensional sequence.")
+        if len(self.horizon_times) == 0:
+            raise ValueError("horizon_times must contain at least one prediction time.")
+        if np.any(self.horizon_times <= 0.0):
+            raise ValueError("All horizon_times must be positive.")
+        if np.any(np.diff(self.horizon_times) <= 0.0):
+            raise ValueError("horizon_times must be strictly increasing.")
+
+        self.horizon_durations = np.diff(self.horizon_times, prepend=0.0)
+        self.horizon_length = len(self.horizon_times)
+
+        self.seek_y_positions = np.asarray(seek_y_positions, dtype=float)
+
+        if self.seek_y_positions.shape[0] != self.horizon_length:
+            raise ValueError(
+                "The number of seek-point sets must match the number of horizon steps."
+            )
+
+        self.last_predicted_yaws = np.zeros(self.horizon_length, dtype=float)
+
+        self.last_predicted_states = [
+            DynamicState() for _ in range(self.horizon_length)
+        ]
+
+    def init_parameters(self, node: Node) -> None:
+
+        self.curvature_radius_maximum = self._get_parameter_safe(
+            node, "curvature_radius_maximum"
+        )
+        self.planned_speed = self._first_scalar(
+            self._get_parameter_safe(node, "planned_speed"), "planned_speed"
+        )
+        self.deceleration_angle_maximum = self._get_parameter_safe(
+            node, "velocity_control.deceleration_angle_maximum"
+        )
+        self.deceleration_gain = self._get_parameter_safe(
+            node, "velocity_control.deceleration_gain"
+        )
+
+        def default(name, value):
+            return self._get_parameter_or_default(node, name, value)
+
+        self.integration_dt = default("prediction.integration_dt", 0.01)
+
+        self.velocity_response_time = default("prediction.velocity_response_time", 0.5)
+        self.yaw_rate_response_time = default("prediction.yaw_rate_response_time", 0.3)
+
+        self.linear_viscous_resistance = default("prediction.linear_viscous_resistance", 0.0)
+        self.yaw_viscous_resistance = default("prediction.yaw_viscous_resistance", 0.0)
+
+        self.vehicle_mass = default("vehicle.mass", -1.0)
+        self.vehicle_yaw_inertia = default("vehicle.yaw_inertia", -1.0)
+        self.wheel_diameter = default("wheel.diameter", -1.0)
+        self.wheel_tread = default("wheel.tread", -1.0)
+
+        self.wheel_torque_per_amp = default("motor.wheel_torque_per_amp", -1.0)
+        self.current_limit_amp = default("motor.current_limit_amp", 50.0)
+
+        self._validate_physical_parameters()
+
+    @staticmethod
+    def _get_parameter_safe(node: Node, name: str) -> Any:
+
+        if node.has_parameter(name):
+            return node.get_parameter(name).value
+        return get_ros_parameter(node, name)
+
+    @staticmethod
+    def _get_parameter_or_default(node: Node, name: str, default_value):
+
+        if not node.has_parameter(name):
+            node.declare_parameter(name, default_value)
+        return node.get_parameter(name).value
+
+    @staticmethod
+    def _first_scalar(value, parameter_name: str) -> float:
+
+        array = np.asarray(value, dtype=float).reshape(-1)
+        if array.size == 0:
+            raise ValueError(f"{parameter_name} must not be empty.")
+        return float(array[0])
+
+    def _validate_physical_parameters(self) -> None:
+
+        positive_parameters = {
+            "prediction.integration_dt": self.integration_dt,
+            "prediction.velocity_response_time": self.velocity_response_time,
+            "prediction.yaw_rate_response_time": self.yaw_rate_response_time,
+            "vehicle.mass": self.vehicle_mass,
+            "vehicle.yaw_inertia": self.vehicle_yaw_inertia,
+            "wheel.diameter": self.wheel_diameter,
+            "wheel.tread": self.wheel_tread,
+            "motor.wheel_torque_per_amp": self.wheel_torque_per_amp,
+            "motor.current_limit_amp": self.current_limit_amp,
+        }
+
+        invalid = [
+            name for name, value in positive_parameters.items() if float(value) <= 0.0
+        ]
+
+        if invalid:
+            raise ValueError(
+                f"The following parameters must be positive: {', '.join(invalid)}"
+            )
+
+        if self.curvature_radius_maximum <= 0.0:
+            raise ValueError("curvature_radius_maximum must be positive.")
+
+    def init_connections(self, node: Node, buffer_size: int) -> None:
+        self.actual_speed_sub = node.create_subscription(
+            Odometry, 'sub_odom', self.odometry_callback, buffer_size
+        )
 
     def odometry_callback(self, odom_msg: Odometry) -> None:
-        linear_velocity = np.linalg.norm([odom_msg.twist.twist.linear.x, odom_msg.twist.twist.linear.y])
-        self.ego_current_velocity = Velocity(linear=linear_velocity,
-                                             angular=odom_msg.twist.twist.angular.z)
+
+        self.ego_current_velocity = Velocity(
+            linear=float(odom_msg.twist.twist.linear.x),
+            angular=float(odom_msg.twist.twist.angular.z),
+        )
+        self.has_received_odometry = True
+
+    def _normalize_curvatures(self, curvatures: Sequence[float]) -> np.ndarray:
+
+        curvature_array = np.asarray(curvatures, dtype=float).reshape(-1)
+
+        if curvature_array.size == 0:
+            curvature_array = np.zeros(self.horizon_length, dtype=float)
+
+        if curvature_array.size < self.horizon_length:
+            curvature_array = np.pad(
+                curvature_array,
+                (0, self.horizon_length - curvature_array.size),
+                mode='edge',
+            )
+
+        return curvature_array[:self.horizon_length]
+
+    def _effective_curvature(self, curvature: float) -> float:
+
+        curvature_deadband = 1.0 / self.curvature_radius_maximum
+        if abs(curvature) <= curvature_deadband:
+            return 0.0
+        return float(curvature)
+
+    def _calculate_target_linear_velocity(
+        self,
+        curvature: float,
+        current_velocity: float,
+        interval_duration: float,
+    ) -> float:
+
+        nominal_velocity = self.planned_speed
+
+        estimated_yaw_change = abs(current_velocity * curvature * interval_duration)
+        excess_yaw_angle = estimated_yaw_change - self.deceleration_angle_maximum
+
+        if excess_yaw_angle <= 0.0:
+            return nominal_velocity
+
+        nominal_sign = 1.0 if nominal_velocity >= 0.0 else -1.0
+        reduced_speed_magnitude = max(
+            abs(nominal_velocity) - excess_yaw_angle * self.deceleration_gain, 0.0
+        )
+
+        return nominal_sign * reduced_speed_magnitude
+
+    def _calculate_desired_accelerations(
+        self,
+        state: DynamicState,
+        curvature: float,
+        interval_duration: float,
+    ) -> Tuple[float, float]:
+
+        target_velocity = self._calculate_target_linear_velocity(
+            curvature, state.linear_velocity, interval_duration
+        )
+
+        curvature_reference_velocity = (
+            state.linear_velocity
+            if abs(state.linear_velocity) >= abs(target_velocity)
+            else target_velocity
+        )
+        target_yaw_rate = curvature_reference_velocity * curvature
+
+        desired_linear_acceleration = (
+            target_velocity - state.linear_velocity
+        ) / self.velocity_response_time
+        desired_yaw_acceleration = (
+            target_yaw_rate - state.yaw_rate
+        ) / self.yaw_rate_response_time
+
+        return float(desired_linear_acceleration), float(desired_yaw_acceleration)
+
+    def _desired_accelerations_to_currents(
+        self,
+        state: DynamicState,
+        desired_linear_acceleration: float,
+        desired_yaw_acceleration: float,
+    ) -> Tuple[float, float]:
+
+        wheel_radius = 0.5 * self.wheel_diameter
+
+        common_current = (
+            wheel_radius
+            * (
+                self.vehicle_mass * desired_linear_acceleration
+                + self.linear_viscous_resistance * state.linear_velocity
+            )
+            / (2.0 * self.wheel_torque_per_amp)
+        )
+
+        differential_current = (
+            wheel_radius
+            * (
+                self.vehicle_yaw_inertia * desired_yaw_acceleration
+                + self.yaw_viscous_resistance * state.yaw_rate
+            )
+            / (self.wheel_tread * self.wheel_torque_per_amp)
+        )
+
+        current_right = common_current + differential_current
+        current_left = common_current - differential_current
+
+        max_abs_current = max(abs(current_left), abs(current_right))
+        if max_abs_current > self.current_limit_amp:
+            scale = self.current_limit_amp / max_abs_current
+            current_left *= scale
+            current_right *= scale
+
+        return float(current_left), float(current_right)
+
+    def _currents_to_actual_accelerations(
+        self,
+        state: DynamicState,
+        current_left: float,
+        current_right: float,
+    ) -> Tuple[float, float]:
+
+        wheel_radius = 0.5 * self.wheel_diameter
+
+        torque_left = self.wheel_torque_per_amp * current_left
+        torque_right = self.wheel_torque_per_amp * current_right
+
+        drive_force = (torque_right + torque_left) / wheel_radius
+        linear_resistance_force = self.linear_viscous_resistance * state.linear_velocity
+        linear_acceleration = (
+            drive_force - linear_resistance_force
+        ) / self.vehicle_mass
+
+        yaw_moment = (
+            self.wheel_tread / (2.0 * wheel_radius) * (torque_right - torque_left)
+        )
+        yaw_resistance_moment = self.yaw_viscous_resistance * state.yaw_rate
+        yaw_acceleration = (
+            yaw_moment - yaw_resistance_moment
+        ) / self.vehicle_yaw_inertia
+
+        return float(linear_acceleration), float(yaw_acceleration)
+
+    @staticmethod
+    def _integrate_state(
+        state: DynamicState,
+        linear_acceleration: float,
+        yaw_acceleration: float,
+        dt: float,
+    ) -> DynamicState:
+
+        next_linear_velocity = state.linear_velocity + linear_acceleration * dt
+        next_yaw_rate = state.yaw_rate + yaw_acceleration * dt
+
+        middle_linear_velocity = 0.5 * (state.linear_velocity + next_linear_velocity)
+        middle_yaw_rate = 0.5 * (state.yaw_rate + next_yaw_rate)
+
+        next_yaw = state.yaw + middle_yaw_rate * dt
+        middle_yaw = 0.5 * (state.yaw + next_yaw)
+
+        next_x = state.x + middle_linear_velocity * np.cos(middle_yaw) * dt
+        next_y = state.y + middle_linear_velocity * np.sin(middle_yaw) * dt
+
+        return DynamicState(
+            x=float(next_x),
+            y=float(next_y),
+            yaw=float(next_yaw),
+            linear_velocity=float(next_linear_velocity),
+            yaw_rate=float(next_yaw_rate),
+        )
+
+    def _simulate_interval(
+        self,
+        initial_state: DynamicState,
+        curvature: float,
+        interval_duration: float,
+    ) -> DynamicState:
+
+        if interval_duration <= 0.0:
+            return DynamicState(**vars(initial_state))
+
+        effective_curvature = self._effective_curvature(curvature)
+
+        num_steps = max(1, int(np.ceil(interval_duration / self.integration_dt)))
+        dt = interval_duration / num_steps
+
+        state = DynamicState(**vars(initial_state))
+
+        for _ in range(num_steps):
+            desired_linear_acceleration, desired_yaw_acceleration = (
+                self._calculate_desired_accelerations(
+                    state, effective_curvature, interval_duration
+                )
+            )
+            current_left, current_right = self._desired_accelerations_to_currents(
+                state, desired_linear_acceleration, desired_yaw_acceleration
+            )
+            actual_linear_acceleration, actual_yaw_acceleration = (
+                self._currents_to_actual_accelerations(
+                    state, current_left, current_right
+                )
+            )
+            state = self._integrate_state(
+                state, actual_linear_acceleration, actual_yaw_acceleration, dt
+            )
+
+        return state
 
     def predict_relative_ego_positions(self, curvatures: np.ndarray) -> np.ndarray:
-        # ego_v: lin_x, ang.z, curvature(curvature): 3 horizon
-        # Assume omega is 1/curvature instead ang.z
 
-        # Initialize
-        predicted_positions = [Pose() for _ in range(self.horizon_length)]
-        # predicted_positions = []
-        predicted_positions_rotate_transformed = np.zeros((self.horizon_length - 1, 2))
+        curvature_array = self._normalize_curvatures(curvatures)
 
-        # Update predict position
-        for curvature, horizon_duration, predicted_position in zip(curvatures, self.horizon_durations, predicted_positions):
-            # predicted_position.pos, predicted_position.yaw = self.predict_pose(curvature, horizon_duration)
-            predicted_pose = self.predict_pose(curvature, horizon_duration)
-            predicted_position.pos, predicted_position.yaw = predicted_pose.pos, predicted_pose.yaw
+        state = DynamicState(
+            x=0.0,
+            y=0.0,
+            yaw=0.0,
+            linear_velocity=float(self.ego_current_velocity.linear),
+            yaw_rate=float(self.ego_current_velocity.angular),
+        )
 
-            # Rotate Point
-        for horizon_idx in range(self.horizon_length - 1):
-            # calculate yaw
-            rotation_angle = predicted_positions[horizon_idx].yaw
-            if horizon_idx:
-                rotation_angle += predicted_positions[horizon_idx+1].yaw
+        ego_positions = np.zeros((self.horizon_length, 2), dtype=float)
+        predicted_states = []
 
-            # apply yaw angle to position
-            predicted_positions_rotate_transformed[horizon_idx] = self.rotate_position(
-                predicted_positions[horizon_idx+1].pos, rotation_angle)
+        for horizon_idx, (curvature, horizon_duration) in enumerate(
+            zip(curvature_array, self.horizon_durations)
+        ):
+            state = self._simulate_interval(
+                state, float(curvature), float(horizon_duration)
+            )
+            ego_positions[horizon_idx] = [state.x, state.y]
+            predicted_states.append(DynamicState(**vars(state)))
 
-        # Update yaw angle
-        for horizon_idx in range(1, self.horizon_length):
-            predicted_positions[horizon_idx].yaw = predicted_positions[horizon_idx - 1].yaw
-
-        first_position_array = np.array([predicted_positions[0].pos.x, predicted_positions[0].pos.y])[np.newaxis, :]
-        ego_positions = np.vstack([first_position_array, predicted_positions_rotate_transformed])
+        self.last_predicted_states = predicted_states
+        self.last_predicted_yaws = np.array(
+            [s.yaw for s in predicted_states], dtype=float
+        )
 
         return ego_positions
 
+    def predict_pose(self, curvature: float, horizon_time: float) -> Pose:
+
+        initial_state = DynamicState(
+            x=0.0,
+            y=0.0,
+            yaw=0.0,
+            linear_velocity=float(self.ego_current_velocity.linear),
+            yaw_rate=float(self.ego_current_velocity.angular),
+        )
+
+        predicted_state = self._simulate_interval(
+            initial_state, float(curvature), float(horizon_time)
+        )
+
+        return Pose(
+            pos=Position2d(predicted_state.x, predicted_state.y),
+            yaw=predicted_state.yaw,
+        )
+
     @staticmethod
     def create_rotation_matrix(angle: float) -> np.ndarray:
-        rotation_matrix = np.array(
-            [[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]])
-        return rotation_matrix
+
+        return np.array(
+            [[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]],
+            dtype=float,
+        )
 
     @staticmethod
     def rotate_position(position: Position2d, angle: float) -> np.ndarray:
+
         rotation_matrix = PosePredictor.create_rotation_matrix(angle)
-        position_transformed = rotation_matrix @ position.as_array()
-        return position_transformed
-
-    def predict_pose(self, curvature: float, horizon_time: float) -> Pose:
-        max_curvature = 1. / self.curvature_radius_maximum
-        radius = 1. / curvature if abs(curvature) > max_curvature else self.curvature_radius_maximum
-
-        travel_distance = self.ego_current_velocity.linear * horizon_time
-        arc_angle = float(travel_distance / radius)
-        if radius < self.curvature_radius_maximum:  # curve
-            x = radius * np.sin(arc_angle)
-            y = radius * (1. - np.cos(arc_angle))
-        else:  # straight
-            x = travel_distance
-            y = 0.
-            arc_angle = 0.
-        return Pose(pos=Position2d(x, y), yaw=arc_angle)
+        return rotation_matrix @ position.as_array()
 
     def predict_relative_seek_positions(self, ego_positions: np.ndarray) -> np.ndarray:
-        relative_seek_positions = np.empty(3, dtype=object)
+
+        del ego_positions
+
+        num_seek_points = self.seek_y_positions.shape[1]
+        relative_seek_positions = np.zeros(
+            (self.horizon_length, 2, num_seek_points), dtype=float
+        )
+
         for horizon_idx in range(self.horizon_length):
-            relative_seek_positions[horizon_idx] = (
-                ego_positions[horizon_idx] + np.array([np.zeros(len(self.seek_y_positions[0])), np.array(self.seek_y_positions[horizon_idx])]).T).T
+            lateral_offsets = np.asarray(
+                self.seek_y_positions[horizon_idx], dtype=float
+            )
+            local_offsets = np.vstack(
+                [np.zeros_like(lateral_offsets), lateral_offsets]
+            )
+            rotation_matrix = self.create_rotation_matrix(
+                self.last_predicted_yaws[horizon_idx]
+            )
+            relative_seek_positions[horizon_idx] = rotation_matrix @ local_offsets
 
         return relative_seek_positions
 
-    def predict_absolute_seek_positions(self, ego_positions: np.ndarray, relative_seek_positions: np.ndarray) -> np.ndarray:
-        seek_points_shape = relative_seek_positions[0].shape
-        absolute_seek_positions = np.zeros((self.horizon_length,) + seek_points_shape)
+    def predict_absolute_seek_positions(
+        self,
+        ego_positions: np.ndarray,
+        relative_seek_positions: np.ndarray,
+    ) -> np.ndarray:
 
-        prev_position = ego_positions[0]
+        ego_positions_array = np.asarray(ego_positions, dtype=float)
+        relative_array = np.asarray(relative_seek_positions, dtype=float)
 
-        for idx in range(self.horizon_length - 1):
-            absolute_seek_positions[idx + 1] = np.array(
-                [prev_position + ego_positions[idx]]).T + relative_seek_positions[idx + 1]
-            prev_position = ego_positions[idx]
+        expected_position_shape = (self.horizon_length, 2)
+        if ego_positions_array.shape != expected_position_shape:
+            raise ValueError(
+                f"ego_positions must have shape {expected_position_shape}, "
+                f"but got {ego_positions_array.shape}."
+            )
 
-        absolute_seek_positions[0] = relative_seek_positions[0]
+        if (
+            relative_array.ndim != 3
+            or relative_array.shape[0] != self.horizon_length
+            or relative_array.shape[1] != 2
+        ):
+            raise ValueError(
+                "relative_seek_positions must have shape "
+                "(horizon_length, 2, num_seek_points)."
+            )
 
-        return absolute_seek_positions
+        return ego_positions_array[:, :, np.newaxis] + relative_array

@@ -6,11 +6,11 @@ SESSION=ros2_ws_git_macro
 # セッション開始
 tmux new-session -d -s $SESSION
 
-# 0つ目のウィンドウ: ros2 bag play
+# 0つ目のウィンドウ: gazebo_simulator
 tmux send-keys -t $SESSION "cd ~/workspace/ros2_ws_git" C-m
 tmux send-keys -t $SESSION "source /opt/ros/foxy/setup.bash" C-m
 tmux send-keys -t $SESSION "source install/setup.bash" C-m
-tmux send-keys -t $SESSION "ros2 bag play -s mcap /home/fuga/AIFMovie/image01_vehicle_info --loop --topics /aiformula_sensing/zed_node/left_image/undistorted /aiformula_sensing/vehicle_info /aiformula_sensing/zed_node/imu" C-m 
+tmux send-keys -t $SESSION "ros2 launch sample_simulator gazebo_simulator.launch.py" C-m 
 
 # 1つ目のウィンドウ: object_road_detector
 tmux new-window -t $SESSION
