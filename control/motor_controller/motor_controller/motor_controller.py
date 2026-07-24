@@ -31,6 +31,9 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from common_python.get_ros_parameter import get_ros_parameter
 # ROSパラメータ取得用関数
 
+from std_msgs.msg import Float32MultiArray
+# デバッグ用配列メッセージ型
+
 
 # ===============================
 # CAN通信用QoS設定
@@ -118,6 +121,30 @@ class MotorController(Node):
         )
         # CAN Publisher作成
 
+        self.debug_pub = self.create_publisher(
+            Float32MultiArray,
+            'debug/controller_state',
+            18
+        )
+        # 制御内部変数をpublishするPublisher
+        #
+        # publish内容：
+        # [0]  u_V                      : 速度PID出力
+        # [1]  u_pd                     : ヨーレートPID出力
+        # [2]  angular_velocity         : 目標ヨーレート[rad/s]
+        # [3]  linear_velocity          : 目標直進速度[m/s]
+        # [4]  right wheel angular vel  : 右輪角速度[rad/s]
+        # [5]  left wheel angular vel   : 左輪角速度[rad/s]
+        # [6]  rpm_right                : 右モータRPM
+        # [7]  rpm_left                 : 左モータRPM
+        # [8]  rpm_avg                  : 左右平均RPM
+        # [9]  v_now                    : 現在速度[m/s]
+        # [10] V_e                      : 速度誤差[m/s]
+        # [11] current_right            : 右モータ電流
+        # [12] current_left             : 左モータ電流
+        # [13] torque_right            : 右モータトルク(Nm×100)
+        # [14] torque_left             : 左モータトルク(Nm×100)
+
         self.publish_timer = self.create_timer(
             self.publish_timer_loop_duration,
             self.publish_canframe_callback
@@ -180,14 +207,35 @@ class MotorController(Node):
         self.v_ref = 0.0
         # 目標速度[m/s]
 
-        self.u_v = 0.0
+        self.u_V = 0.0
         # 速度PID出力
 
         self.V_e_prev = 0.0
         # 前回速度誤差
 
+        #self.V_e_debug = float(V_e)
+
         self.V_ie = 0.0
         # 積分項
+
+        # ===============================
+        # デバッグ用変数
+        # ===============================
+
+        self.rpm_right_debug = 0.0
+        self.rpm_left_debug = 0.0
+        self.rpm_avg_debug = 0.0
+        self.v_now_debug = 0.0
+        self.V_e_debug = 0.0
+        self.current_right_debug = 0.0
+        # 右モータ電流
+        self.current_left_debug = 0.0
+        # 左モータ電流
+        self.torque_right_debug = 0.0
+        # 右モータトルク[Nm×100]
+        self.torque_left_debug = 0.0
+        # 左モータトルク[Nm×100]
+
 
     # ===============================
     # ROSパラメータ取得
@@ -324,21 +372,98 @@ class MotorController(Node):
     def can_callback(self, msg: Frame):
 
         RPM_ID = 0x711
-        # モータRPM受信用CAN ID
+        # モータRPM受信用CAN ID(TPDO3)
 
-        if msg.id != RPM_ID:
-            return
-        # 指定ID以外は無視
+        CURRENT_ID = 0x712
+        # モータ電流受信用CAN ID(TPDO4)
 
-        if self.last_can_msg is None:
+        # =====================
+        # RPM受信
+        # =====================
 
-            self.get_logger().info(
-                "Subscribe CAN RPM Frame !"
+        if msg.id == RPM_ID:
+
+            if self.last_can_msg is None:
+
+                self.get_logger().info(
+                    "Subscribe CAN RPM Frame !"
+                )
+
+            self.last_can_msg = msg
+            # RPMフレーム保存
+
+        # =====================
+        # 電流受信
+        # =====================
+
+        elif msg.id == CURRENT_ID:
+
+            current_right = int.from_bytes(
+                bytes(msg.data[0:2]),
+                byteorder='little',
+                signed=True
             )
-            # 初回受信ログ表示
+            # data[0:1] → 右電流
 
-        self.last_can_msg = msg
-        # 最新CANメッセージ保存
+            current_left = int.from_bytes(
+                bytes(msg.data[2:4]),
+                byteorder='little',
+                signed=True
+            )
+            # data[2:3] → 左電流
+            
+            torque_right = int.from_bytes(
+                bytes(msg.data[4:6]),
+                byteorder='little',
+                signed=True
+	    )
+	    # data[4:5] → 右モータトルク
+
+            torque_left = int.from_bytes(
+                bytes(msg.data[6:8]),
+                byteorder='little',
+                signed=True
+            )
+            # data[6:7] → 左モータトルク
+            self.current_right_debug = float(
+                current_right
+            )
+            # デバッグ用保存
+
+            self.current_left_debug = float(
+                current_left
+            )
+            # デバッグ用保存
+            self.torque_right_debug = float(
+                torque_right
+            )
+            # デバッグ用保存
+
+            self.torque_left_debug = float(
+                torque_left
+            )    
+            # デバッグ用保存
+
+#    def can_callback(self, msg: Frame):
+
+#        RPM_ID = 0x711
+#       # モータRPM受信用CAN ID(TPDO3)
+ 
+#       if msg.id != RPM_ID:
+#            return
+#        # 指定ID以外は無視
+
+#        if self.last_can_msg is None:
+
+#            self.get_logger().info(
+#                "Subscribe CAN RPM Frame !"
+#            )
+#            # 初回受信ログ表示
+
+#        self.last_can_msg = msg
+#        # 最新CANメッセージ保存
+
+
 
     # ===============================
     # CAN送信タイマー
@@ -486,11 +611,76 @@ class MotorController(Node):
         # 秒→分変換係数
 
         rpm = (
-            wheel_angular_velocities
-            * (minute_to_second / (2. * np.pi))
+            wheel_angular_velocities*30
+           
         )
+        #* (minute_to_second / (2. * np.pi))
         # rad/s→rpm変換
+                # ===============================
+        # デバッグデータpublish
+        # ===============================
 
+        debug_msg = Float32MultiArray()
+        # デバッグ用メッセージ生成
+
+        debug_msg.data = [
+
+            float(u_V),
+            # 速度PID制御出力
+
+            float(u_pd),
+            # ヨーレートPID制御出力
+
+            float(angular_velocity),
+            # 目標ヨーレート[rad/s]
+
+            float(linear_velocity),
+            # 目標直進速度[m/s]
+
+            float(
+                wheel_angular_velocities[
+                    DriveWheel.RIGHT
+                ]
+            ),
+            # 右車輪角速度[rad/s]
+
+            float(
+                wheel_angular_velocities[
+                    DriveWheel.LEFT
+                ]
+            ),
+            # 左車輪角速度[rad/s]
+
+            float(self.rpm_right_debug),
+            # 右モータRPM
+
+            float(self.rpm_left_debug),
+            # 左モータRPM
+
+            float(self.rpm_avg_debug),
+            # 平均RPM
+
+            float(self.v_now_debug),
+            # 現在速度[m/s]
+
+            float(self.V_e_debug),      
+            # 速度誤差
+            float(self.current_right_debug),
+            # 右モータ電流
+
+            float(self.current_left_debug),
+            # 左モータ電流
+            
+            float(self.torque_right_debug),
+            # 右モータトルク  
+            
+            float(self.torque_left_debug),
+            # 左モータトルク
+        ]
+
+        self.debug_pub.publish(debug_msg)
+        # デバッグ情報をTopicへpublish
+        
         return (
             rpm * self.gear_ratio
         ).tolist()
@@ -549,6 +739,10 @@ class MotorController(Node):
         )
         # 平均RPM
 
+        self.rpm_right_debug = float(rpm_right)
+        self.rpm_left_debug = float(rpm_left)
+        self.rpm_avg_debug = float(rpm_avg)
+
         wheel_radius = self.diameter * 0.5
         # 車輪半径[m]
 
@@ -558,6 +752,8 @@ class MotorController(Node):
             / self.gear_ratio
         )
         # rpm→m/s変換
+
+        self.v_now_debug = float(v)
 
         return v
         # 現在速度返却

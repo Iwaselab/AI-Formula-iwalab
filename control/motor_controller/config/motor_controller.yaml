@@ -4,18 +4,18 @@
 
     pd:
       dt: 0.01
-      kp: 450.0
-      ki: 10.0
-      kd: 3.0
-      #kp: 250.0
-      #ki: 7.0
-      #kd: 3.0  
+      kp: 4
+      #10
+      ki: 2
+      kd: 0
       max_output: 50.0
       min_output: -50.0
 
-      kp_v: 300.0
-      #kp_v: 30.0
-      ki_v: 15.0
-      kd_v: 1.0
+      kp_v: 15
+      #13
+      ki_v: 4
+      #2
+      kd_v: 0
+      #-0.005
       max_output_v: 10.0
       min_output_v: -10.0
