@@ -85,6 +85,14 @@ tmux send-keys -t $SESSION:10 "source /opt/ros/foxy/setup.bash" C-m
 tmux send-keys -t $SESSION:10 "source install/setup.bash" C-m
 tmux send-keys -t $SESSION:10 "ros2 launch extremum_seeking_mpc extremum_seeking_mpc.launch.py" C-m
 
+# # 11つ目のウィンドウ: twist_logger.py
+# tmux new-window -t $SESSION
+# tmux send-keys -t $SESSION:11 "cd ~/workspace/ros2_ws_git" C-m
+# tmux send-keys -t $SESSION:11 "source /opt/ros/foxy/setup.bash" C-m
+# tmux send-keys -t $SESSION:11 "source install/setup.bash" C-m
+# tmux send-keys -t $SESSION:11 "cd ~/workspace/ros2_ws_git/src/AI-Formula-iwalab" C-m
+# tmux send-keys -t $SESSION:11 "python3 twist_logger.py --topic /aiformula_control/extremum_seeking_mpc/cmd_vel --output twist_log.csv" C-m
+
 # # 11つ目のウィンドウ: road_surface_segmenter
 # tmux new-window -t $SESSION
 # tmux send-keys -t $SESSION:11 "cd ~/workspace/ros2_ws_git" C-m

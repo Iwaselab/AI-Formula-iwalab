@@ -4,7 +4,7 @@ import numpy as np
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from common_python.get_ros_parameter import get_ros_parameter
-from .util import Position2d, Pose, Velocity
+from .util import Position2d, Pose, Velocity, first_scalar
 
 
 @dataclass
@@ -57,16 +57,12 @@ class PosePredictor:
 
         self.last_predicted_yaws = np.zeros(self.horizon_length, dtype=float)
 
-        self.last_predicted_states = [
-            DynamicState() for _ in range(self.horizon_length)
-        ]
-
     def init_parameters(self, node: Node) -> None:
 
         self.curvature_radius_maximum = self._get_parameter_safe(
             node, "curvature_radius_maximum"
         )
-        self.planned_speed = self._first_scalar(
+        self.planned_speed = first_scalar(
             self._get_parameter_safe(node, "planned_speed"), "planned_speed"
         )
         self.deceleration_angle_maximum = self._get_parameter_safe(
@@ -110,14 +106,6 @@ class PosePredictor:
         if not node.has_parameter(name):
             node.declare_parameter(name, default_value)
         return node.get_parameter(name).value
-
-    @staticmethod
-    def _first_scalar(value, parameter_name: str) -> float:
-
-        array = np.asarray(value, dtype=float).reshape(-1)
-        if array.size == 0:
-            raise ValueError(f"{parameter_name} must not be empty.")
-        return float(array[0])
 
     def _validate_physical_parameters(self) -> None:
 

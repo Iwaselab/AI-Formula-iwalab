@@ -9,7 +9,7 @@ from .object_risk_calculator import ObjectRiskCalculator
 from .path_optimizer import PathOptimizer
 from .pose_predictor import PosePredictor
 from .road_risk_calculator import RoadRiskCalculator
-from .util import Side, Vector2
+from .util import Side, Vector2, first_scalar
 
 class ExtremumSeekingMpc(Node):
 
@@ -43,7 +43,7 @@ class ExtremumSeekingMpc(Node):
         def get(name, cast=float):
             return cast(get_ros_parameter(self, name))
 
-        self.ego_target_velocity = self._first_scalar(
+        self.ego_target_velocity = first_scalar(
             get_ros_parameter(self, "planned_speed"), "planned_speed"
         )
         self.predict_horizon = np.asarray(
@@ -80,13 +80,6 @@ class ExtremumSeekingMpc(Node):
             )
 
         self.horizon_length = len(self.predict_horizon)
-
-    @staticmethod
-    def _first_scalar(value, parameter_name: str) -> float:
-        array = np.asarray(value, dtype=float).reshape(-1)
-        if array.size == 0:
-            raise ValueError(f"{parameter_name} must not be empty.")
-        return float(array[0])
 
     def init_members(self) -> None:
 

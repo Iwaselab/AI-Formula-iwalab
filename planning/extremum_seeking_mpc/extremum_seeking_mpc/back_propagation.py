@@ -11,7 +11,7 @@ class BackPropagation:
         self.bpgain_function_positive = interp1d(self.gain_function_u, self.gain_function_positive_y)
         self.bpgain_function_negative = interp1d(self.gain_function_u, self.gain_function_negative_y)
 
-    def init_parameters(self, node: Node):
+    def init_parameters(self, node: Node) -> None:
         self.gain_function_u = get_ros_parameter(
             node, "backpropagation.gain_function_u")
         self.gain_function_positive_y = get_ros_parameter(
@@ -20,10 +20,10 @@ class BackPropagation:
             node, "backpropagation.gain_function_negative_y")
 
     def apply_backpropagation(self, forward_risk_in: float, backward_risk_in: float) -> float:
-        forward_risk_in = np.clip(forward_risk_in, -1., 1.)
+        forward_risk_in = float(np.clip(forward_risk_in, -1., 1.))
         if backward_risk_in < 0.0:
-            propagation_gain = self.bpgain_function_negative(forward_risk_in)
+            propagation_gain = float(self.bpgain_function_negative(forward_risk_in))
         else:
-            propagation_gain = self.bpgain_function_positive(forward_risk_in)
+            propagation_gain = float(self.bpgain_function_positive(forward_risk_in))
 
         return backward_risk_in * propagation_gain

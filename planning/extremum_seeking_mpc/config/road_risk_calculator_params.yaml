@@ -8,7 +8,7 @@
       gain: 5.
     
     road_weight:
-      u: [0., 0.2, 0.4, 0.6, 0.7, 0.9, 1.0] #[m]
+      u: [0., 0.2, 0.4, 0.6, 0.7, 0.9, 1.0]
       num_function: 5
       num_function_coefficients: 3 # ex) maximum_function_order: 2 -> 3 (a * x^2 + b * x + c)
     

@@ -45,7 +45,7 @@ class PathOptimizer:
 
         # Calculate moving averages
         risk_moving_averages = [
-            controller.apply_risk_moving_average(risk) for controller, risk in zip(controllers, risk)
+            controller.apply_risk_moving_average(r) for controller, r in zip(controllers, risk)
         ]
 
         # Calculate backpropagation values
@@ -62,7 +62,7 @@ class PathOptimizer:
             controllers[1].optimize_input(
                 risk_moving_averages[1], backpropagation_values["21"]),
             controllers[2].optimize_input(
-                risk_moving_averages[2], 0)
+                risk_moving_averages[2], 0.0)
         ]
 
         return np.array(curvatures)
