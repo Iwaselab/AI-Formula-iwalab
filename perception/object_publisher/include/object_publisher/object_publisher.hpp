@@ -39,7 +39,7 @@ private:
     bool toPositionInVehicle(const aiformula_interfaces::msg::Rect& rect, tf2::Vector3& bottom_left_point,
                              tf2::Vector3& bottom_right_point) const;
     void updateOrAddObject(const tf2::Vector3& bottom_left, const tf2::Vector3& bottom_right,
-                           const double& current_time);
+                           const double& current_time, const int32_t& class_id);
     TrackedObject* findClosestObject(const double& obj_x, const double& obj_y);
     void deleteExpiredObjects(const double& current_time);
     void publishObjectInfo(const std_msgs::msg::Header& header, const tf2::Transform& vehicle_T_odom);

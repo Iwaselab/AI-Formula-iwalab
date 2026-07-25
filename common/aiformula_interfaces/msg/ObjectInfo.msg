@@ -3,3 +3,4 @@ float32 y
 float32 width
 uint8 id
 float32 confidence
+int32 class_id

@@ -17,15 +17,16 @@ public:
     static void initStaticMembers(rclcpp::Node* const node_ptr);
     static void printStaticMembers();
     TrackedObject(const int& id, const float& left_x, const float& left_y, const float& right_x, const float& right_y,
-                  const double& timestamp);
+                  const double& timestamp, const int32_t& class_id = -1);
     ~TrackedObject() = default;
     float computeDistanceSquared(const float& x_in, const float& y_in) const;
     void update(const float& left_x, const float& left_y, const float& right_x, const float& right_y,
-                const double& current_time);
+                const double& current_time, const int32_t& class_id = -1);
     bool isExpired(const double& current_time);
 
     float getId() const { return id_; }
     float getConfidence() const { return confidence_; }
+    int32_t getClassId() const { return class_id_; }
     float getLeftX() const { return kf_.statePost.at<float>(0); }
     float getLeftY() const { return kf_.statePost.at<float>(1); }
     float getRightX() const { return kf_.statePost.at<float>(2); }
@@ -44,6 +45,7 @@ private:
     unsigned int id_;
     double last_seen_time_;
     double confidence_;
+    int32_t class_id_;
 };
 
 }  // namespace aiformula

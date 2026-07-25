@@ -94,7 +94,7 @@ void ObjectPublisher::bboxCallback(const aiformula_interfaces::msg::RectMultiArr
         if (!toPositionInVehicle(rect, bottom_left_in_vehicle, bottom_right_in_vehicle)) continue;
         const auto bottom_left_in_odom = odom_T_vehicle * bottom_left_in_vehicle;
         const auto bottom_right_in_odom = odom_T_vehicle * bottom_right_in_vehicle;
-        updateOrAddObject(bottom_left_in_odom, bottom_right_in_odom, current_time);
+        updateOrAddObject(bottom_left_in_odom, bottom_right_in_odom, current_time, rect.class_id);
 
         const float center_x_in_vehicle = (bottom_left_in_vehicle.x() + bottom_right_in_vehicle.x()) * 0.5;
         const float center_y_in_vehicle = (bottom_left_in_vehicle.y() + bottom_right_in_vehicle.y()) * 0.5;
@@ -116,16 +116,16 @@ bool ObjectPublisher::toPositionInVehicle(const aiformula_interfaces::msg::Rect&
 }
 
 void ObjectPublisher::updateOrAddObject(const tf2::Vector3& bottom_left, const tf2::Vector3& bottom_right,
-                                        const double& current_time) {
+                                        const double& current_time, const int32_t& class_id) {
     const float center_x = (bottom_left.x() + bottom_right.x()) * 0.5;
     const float center_y = (bottom_left.y() + bottom_right.y()) * 0.5;
     TrackedObject* closest_object = findClosestObject(center_x, center_y);
     if (closest_object) {
-        closest_object->update(bottom_left.x(), bottom_left.y(), bottom_right.x(), bottom_right.y(), current_time);
+        closest_object->update(bottom_left.x(), bottom_left.y(), bottom_right.x(), bottom_right.y(), current_time, class_id);
     } else {
         static unsigned int next_object_id = 0;
         tracked_objects_.emplace_back(next_object_id++, bottom_left.x(), bottom_left.y(), bottom_right.x(),
-                                      bottom_right.y(), current_time);
+                                      bottom_right.y(), current_time, class_id);
     }
 }
 
@@ -166,6 +166,7 @@ void ObjectPublisher::publishObjectInfo(const std_msgs::msg::Header& header, con
         object_info.width = std::abs(bottom_left_in_vehicle.y() - bottom_right_in_vehicle.y());
         object_info.id = tracked_object.getId();
         object_info.confidence = tracked_object.getConfidence();
+        object_info.class_id = tracked_object.getClassId();
     };
     object_pub_->publish(pub_msg);
     RCLCPP_INFO_ONCE(this->get_logger(), "Publish Object Info !");

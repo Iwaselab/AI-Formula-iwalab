@@ -3,10 +3,17 @@ from enum import IntEnum
 import numpy as np
 
 
+def first_scalar(value, parameter_name: str) -> float:
+    array = np.asarray(value, dtype=float).reshape(-1)
+    if array.size == 0:
+        raise ValueError(f"{parameter_name} must not be empty.")
+    return float(array[0])
+
+
 @dataclass
 class Position2d:
     x: float = 0.0
-    y: float = 0.
+    y: float = 0.0
 
     def as_array(self) -> np.ndarray:
         return np.array([self.x, self.y])
@@ -35,7 +42,7 @@ class ControllerParameters:
 
 
 @dataclass
-class LowPassFilterParameters:  # LowPassFilter x(k+1) = A*x(k) + B*u(k) , y(k) = C * x(k)
+class LowPassFilterParameters:
     A: float
     B: float
     C: float

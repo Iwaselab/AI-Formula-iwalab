@@ -5,6 +5,7 @@ from launch.actions import DeclareLaunchArgument
 from ament_index_python.packages import get_package_share_directory
 from common_python.launch_util import get_frame_ids_and_topic_names
 from launch.substitutions import LaunchConfiguration
+import os
 
 
 def generate_launch_description():
@@ -13,12 +14,17 @@ def generate_launch_description():
     ROS_PARAM_CONFIG = (
         osp.join(get_package_share_directory(PACKAGE_NAME), "config", "object_road_detector.yaml"),
     )
+    
+    # Get yolopv2 weight file path from source directory
+    # The weight file is located in yolopv2 package
+    yolopv2_weight_path = os.path.expanduser(
+        "~/workspace/ros2_ws_git/src/AI-Formula-iwalab/perception/yolopv2/data/weights/yolopv2.pt" #ここで重みのパスを指定
+    )
 
     launch_args = (
         DeclareLaunchArgument(
             "weight_path",
-            default_value=osp.join(get_package_share_directory(
-                "object_road_detector"), "weights", "shiho-v1-20250321.pth"),
+            default_value=yolopv2_weight_path,
             description="Path to the weight pth file."),
         DeclareLaunchArgument(
             "use_device",
@@ -44,11 +50,11 @@ def generate_launch_description():
             ("sub_image",
              TOPIC_NAMES["sensing"]["zedx"]["left_image"]["undistorted"]),
             ("pub_mask_image",
-             TOPIC_NAMES["perception"]["mask_image"]),
+             TOPIC_NAMES["perception"]["mask_image_new"]),
             ("pub_bbox",
              TOPIC_NAMES["perception"]["objects"]["bounding_box"]),
             ("pub_annotated_image",
-             TOPIC_NAMES["visualization"]["annotated_image"]),
+             TOPIC_NAMES["visualization"]["annotated_image_new"]),
         ],
     )
 

@@ -1,6 +1,9 @@
 import numpy as np
 
 from .util import ControllerParameters, LowPassFilterParameters
+HIGHPASS_INDICES = [0, 1, 3, 4]
+SIN_INDICES = [2, 1, 5, 6]
+WEIGHTS = [1.0, 2.0, 2.0, 1.0]
 
 
 class ExtremumSeekingController:
@@ -15,10 +18,9 @@ class ExtremumSeekingController:
         # Setting Sin Wave
         sin_period = params.sin_period
         sin_time = np.arange(0., sin_period, control_period)
-        self.sin_array = np.sin(2.*np.pi*(sin_time/sin_period))
+        self.sin_array = np.sin(2. * np.pi * (sin_time / sin_period))
 
-        # Setting Seek Points
-        # sin divided by 5: fixed value
+        # Setting Seek Points (sin wave perturbation sample points)
         # [1., 0.70710678, 0., -0.70710678, -1.]
         self.seek_points = np.hstack(
             [np.flip(self.sin_array[0:3]), self.sin_array[-3: -1]])
@@ -39,16 +41,13 @@ class ExtremumSeekingController:
 
     def apply_risk_moving_average(self, risk_in: np.ndarray) -> float:
         risk_in = np.array(risk_in)
-        highpass_indices = [0, 1, 3, 4]
-        sin_indices = [2, 1, 5, 6]
-        weights = [1.0, 2.0, 2.0, 1.0]
 
         # Highpass filter
-        differences = risk_in[highpass_indices] - risk_in[2]
+        differences = risk_in[HIGHPASS_INDICES] - risk_in[2]
 
         # Risk Moving Average
-        sin_values = self.sin_array[sin_indices]
-        risk_moving_average_out = np.sum(weights * sin_values * differences) / self.num_moving_average
+        sin_values = self.sin_array[SIN_INDICES]
+        risk_moving_average_out = np.sum(WEIGHTS * sin_values * differences) / self.num_moving_average
 
         # LowPass Filter
         self.state_next = self.lowpass_A * self.state + self.lowpass_B * risk_moving_average_out

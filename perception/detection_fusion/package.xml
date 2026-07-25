@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd"
+schematypens="http://www.w3.org/2001/XMLSchema"?>
+
+<package format="3">
+  <name>detection_fusion</name>
+  <version>0.0.0</version>
+  <description>
+    Fuses lane-mask outputs from object_road_detector (YOLOPv2) and
+    object_road_detector_old (YOLOP) by pixel-wise OR.
+  </description>
+  <maintainer email="25fmr05@ms.dendai.ac.jp">Fuga Inagaki</maintainer>
+  <license>MIT</license>
+
+  <depend>common_python</depend>
+  <depend>aiformula_interfaces</depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

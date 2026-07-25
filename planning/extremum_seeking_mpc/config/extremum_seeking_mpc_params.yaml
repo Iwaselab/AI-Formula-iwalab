@@ -11,3 +11,22 @@
     velocity_control:
       deceleration_angle_maximum: 0.16 #[rad]
       deceleration_gain: 5.
+
+    prediction:
+      integration_dt: 0.01
+      velocity_response_time: 0.5
+      yaw_rate_response_time: 0.3
+      linear_viscous_resistance: 0.0
+      yaw_viscous_resistance: 0.0
+
+    vehicle:
+      mass: 70.00        # 実機質量 [kg](大体)
+      yaw_inertia: 5.00 # ヨー慣性モーメント [kg m^2]
+
+    wheel:
+      diameter: 0.254  # [m] 確定
+      tread: 0.60      # [m]  確定
+
+    motor:
+      wheel_torque_per_amp: 1.00  # 実効ホイール軸トルク係数 [N m/A]
+      current_limit_amp: 50.0

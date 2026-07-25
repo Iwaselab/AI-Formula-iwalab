@@ -16,7 +16,9 @@ sensing:
   rear_potentiometer: "/aiformula_sensing/rear_potentiometer/yaw"
 
 perception:
-  mask_image: "/aiformula_perception/object_road_detector/mask_image"
+  mask_image_new: "/aiformula_perception/object_road_detector/mask_image"
+  mask_image_old: "/aiformula_perception/object_road_detector_old/mask_image"
+  mask_image: "/aiformula_perception/detection_fusion/mask_image"
   objects:
     bounding_box: "/aiformula_perception/object_road_detector/rect"
     info: "/aiformula_perception/object_publisher/object_info"
@@ -43,6 +45,9 @@ control:
   output_can_data: "/aiformula_control/motor_controller/reference_signal"
 
 visualization:
-  annotated_image: "/aiformula_visualization/object_road_detector/annotated_image"
+  annotated_image_new: "/aiformula_visualization/object_road_detector/annotated_image_ll"
+  annotated_image_old: "/aiformula_visualization/object_road_detector_old/annotated_image_ll"
+  annotated_image: "/aiformula_visualization/detection_fusion/annotated_image_ll"
+  annotated_image_yolo: "/aiformula_visualization/yolo_object_detector/annotated_image_bb"
   aiformula_pilot: "/aiformula_visualization/zed/left_image/compressed"
   unfiltered_object: "/aiformula_visualization/object_publisher/unfiltered_object"
