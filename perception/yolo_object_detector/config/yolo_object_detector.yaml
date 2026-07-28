@@ -1,4 +1,4 @@
 /**:
   ros__parameters:
-    confidence_threshold: 0.25
+    confidence_threshold: 0.95
     iou_threshold: 0.45

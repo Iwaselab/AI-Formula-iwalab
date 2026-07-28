@@ -311,6 +311,38 @@ class ExtremumSeekingMpc(Node):
                 updated_effective_curvatures
             )
 
+            raw_curvature = float(
+                updated_curvatures[0]
+            )
+            
+            effective_curvature = float(
+                updated_effective_curvatures[0]
+            )
+
+            first_horizon_time = float(
+                self.predict_horizon[0]
+            )
+
+            estimated_yaw_angle = abs(
+                self.ego_target_velocity
+    	        * effective_curvature
+    	        * first_horizon_time
+            )
+
+            if abs(vehicle_linear_velocity) < 1.0e-9:
+                self.get_logger().warning(
+                    "V_ref became zero: "
+                    f"planned_speed={self.ego_target_velocity:.6f}, "
+                    f"raw_curvature={raw_curvature:.6f}, "
+                    f"effective_curvature={effective_curvature:.6f}, "
+                    f"horizon_time={first_horizon_time:.6f}, "
+                    f"estimated_yaw_angle={estimated_yaw_angle:.6f}, "
+                    f"angle_threshold="
+                    f"{self.deceleration_angle_maximum:.6f}, "
+                    f"deceleration_gain="
+                    f"{self.deceleration_gain:.6f}"
+                )
+
             commanded_ego_positions, _commanded_seek_positions = (
                 self.predict_ego_position(updated_effective_curvatures)
             )

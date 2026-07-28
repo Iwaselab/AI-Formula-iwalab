@@ -21,8 +21,8 @@ def generate_launch_description():
 
     extremum_seeking_mpc = Node(
         package=PACKAGE_NAME,
-        executable="extremum_seeking_mpc_torque_model",
-        name="extremum_seeking_mpc",
+        executable=PACKAGE_NAME,
+        name=PACKAGE_NAME,
         namespace="/aiformula_planning",
         output="screen",
         emulate_tty=True,

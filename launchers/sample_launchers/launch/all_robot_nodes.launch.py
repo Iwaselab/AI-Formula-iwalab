@@ -47,8 +47,8 @@ def generate_launch_description():
     # --- Perception --- #
     object_road_detector = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            osp.join(get_package_share_directory("object_road_detector"),
-                     "launch/object_road_detector.launch.py"),
+            osp.join(get_package_share_directory("object_road_detector_old"),
+                     "launch/object_road_detector_old.launch.py"),
         ),
     )
     lane_line_publisher = IncludeLaunchDescription(
