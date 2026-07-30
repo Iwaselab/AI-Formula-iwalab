@@ -24,6 +24,8 @@ def get_ros_parameter(node: rclpy.node.Node, param_name: str) -> Any:
     """
 
     try:
+        if node.has_parameter(param_name):
+            return node.get_parameter(param_name).value
         if get_ros_distro() == "humble":
             descriptor = ParameterDescriptor(dynamic_typing=True)
             node.declare_parameter(param_name, descriptor=descriptor)

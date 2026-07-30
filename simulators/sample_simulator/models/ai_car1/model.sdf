@@ -243,7 +243,7 @@
     <joint name="camera_joint" type="fixed">
       <parent>base_link</parent>
       <child>camera_link</child>
-      <pose>0.055 0 0.54 0 0.0175 0</pose>
+      <pose>0.055 0 0.54 0 0 0</pose>
       <!-- <pose>0.0 0.35 0.42 0 0 1.57</pose> -->
       <axis>
         <xyz>0 0 1</xyz>
@@ -253,7 +253,7 @@
     <joint name="camera_rgb_joint" type="fixed">
       <parent>camera_link</parent>
       <child>camera_rgb_frame</child>
-      <pose>0.055 0 0.54 0 0.0175 0</pose>
+      <pose>0.055 0 0.54 0 0 0</pose>
       <!-- <pose>0.0 0.35 0.42 0 0 1.57</pose> -->
       <axis>
         <xyz>0 0 1</xyz>
@@ -264,7 +264,7 @@
 
     <link name="camera_rgb_frame">
       <inertial>
-        <pose>0.055 0 0.54 0 0.0175 0</pose>
+        <pose>0.055 0 0.54 0 0 0</pose>
         <!-- <pose>0.0 0.35 0.42 0 0 1.57</pose> -->
         <inertia>
           <ixx>0.001</ixx>
@@ -277,7 +277,7 @@
         <mass>0.035</mass>
       </inertial>
 
-      <pose>0.055 0 0.54 0 0.0175 0</pose>
+      <pose>0.055 0 0.54 0 0 0</pose>
       <!-- <pose>0.0 0.35 0.42 0 0 1.57</pose> -->
       <sensor name="camera" type="camera">
         <always_on>true</always_on>
