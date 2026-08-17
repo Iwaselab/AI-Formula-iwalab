@@ -9,7 +9,7 @@ from .object_risk_calculator import ObjectRiskCalculator
 from .path_optimizer import PathOptimizer
 from .pose_predictor import PosePredictor
 from .road_risk_calculator import RoadRiskCalculator
-from .util import Side, Vector2, first_scalar
+from .util import Side, Vector2, calculate_decelerated_velocity, first_scalar
 
 class ExtremumSeekingMpc(Node):
 
@@ -196,22 +196,14 @@ class ExtremumSeekingMpc(Node):
     ) -> float:
 
         first_horizon_time = float(self.predict_horizon[0])
-
-        estimated_yaw_angle = abs(
-            self.ego_target_velocity * effective_curvature * first_horizon_time
+        return calculate_decelerated_velocity(
+            base_velocity=self.ego_target_velocity,
+            eval_velocity=self.ego_target_velocity,
+            curvature=effective_curvature,
+            dt=first_horizon_time,
+            deceleration_angle_maximum=self.deceleration_angle_maximum,
+            deceleration_gain=self.deceleration_gain,
         )
-        excess_yaw_angle = estimated_yaw_angle - self.deceleration_angle_maximum
-
-        if excess_yaw_angle <= 0.0:
-            return self.ego_target_velocity
-
-        target_speed_magnitude = max(
-            abs(self.ego_target_velocity) - self.deceleration_gain * excess_yaw_angle,
-            0.0,
-        )
-        target_direction = 1.0 if self.ego_target_velocity >= 0.0 else -1.0
-
-        return target_direction * target_speed_magnitude
 
     @staticmethod
     def calculate_yaw_rate_reference(

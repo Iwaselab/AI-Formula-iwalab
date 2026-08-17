@@ -10,6 +10,30 @@ def first_scalar(value, parameter_name: str) -> float:
     return float(array[0])
 
 
+def calculate_decelerated_velocity(
+    base_velocity: float,
+    eval_velocity: float,
+    curvature: float,
+    dt: float,
+    deceleration_angle_maximum: float,
+    deceleration_gain: float,
+) -> float:
+
+    estimated_yaw_change = abs(eval_velocity * curvature * dt)
+    excess_yaw_angle = estimated_yaw_change - deceleration_angle_maximum
+
+    if excess_yaw_angle <= 0.0:
+        return base_velocity
+
+    base_sign = 1.0 if base_velocity >= 0.0 else -1.0
+    reduced_speed_magnitude = max(
+        abs(base_velocity) - excess_yaw_angle * deceleration_gain, 0.0
+    )
+    return base_sign * reduced_speed_magnitude
+
+
+
+
 @dataclass
 class Position2d:
     x: float = 0.0

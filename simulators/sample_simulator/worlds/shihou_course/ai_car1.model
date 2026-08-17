@@ -611,7 +611,7 @@
     </road>   
 
     <include>
-      <pose>0.0 0.0 0.01 0.0 0.0 </pose>
+      <pose>0.0 0.0 0.01 0.0 0.0 3.1415</pose>
       <uri>model://ai_car1</uri>
     </include>
 
