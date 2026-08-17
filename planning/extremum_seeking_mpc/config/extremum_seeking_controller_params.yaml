@@ -3,7 +3,7 @@
     controller_parameters:
       seek_gain: -0.2 # -0.2
       seek_amp: 0.08 # 0.08
-      curvature_limit: 0.2
+      curvature_limit: 0.0667 # 旋回半径15m制約に対応（曲率 = 1/15 ≈ 0.0667 rad/m）
       feedback_gain: 0.9
       sin_period: 0.08 #[s]
     

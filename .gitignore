@@ -13,3 +13,4 @@ log/
 
 # Python
 *.pyc
+twist_log.csv

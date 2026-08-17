@@ -4,18 +4,18 @@
     buffer_size: 10
 
     horizon_times: [2.0, 3.0, 4.0] #[s]
-    planned_speed: [1.6, 0.0] # linear_velocity[m/s], angular_velocity[rad/s]
-    curvature_gain: 25.
-    benefit_gain: 2.
+    planned_speed: [2.0, 0.0] # linear_velocity[m/s], angular_velocity[rad/s]
+    curvature_gain: 1.0
+    benefit_gain: 3.0
     
     velocity_control:
-      deceleration_angle_maximum: 0.16 #[rad]
-      deceleration_gain: 0.0
+      deceleration_angle_maximum: 0.267  # R=15m, v=2.0m/s, horizon[0]=2.0sで計算
+      deceleration_gain: 0.5
 
     prediction:
       integration_dt: 0.01
-      velocity_response_time: 0.5
-      yaw_rate_response_time: 0.3
+      velocity_response_time: 0.4
+      yaw_rate_response_time: 0.25
       linear_viscous_resistance: 0.0
       yaw_viscous_resistance: 0.0
 
