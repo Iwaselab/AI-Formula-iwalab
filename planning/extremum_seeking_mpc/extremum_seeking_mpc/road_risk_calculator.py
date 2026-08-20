@@ -193,7 +193,7 @@ class RoadRiskCalculator:
                 risk[idx] = self.road_risk_gain * (
                     -np.arctan(
                         self.road_risk_right_gradient
-                        * (sigma + self.road_risk_margin)
+                        * (sigma - self.road_risk_margin)  # FIX: -margin (元: +margin)
                     )
                     + self.road_risk_offset
                 )

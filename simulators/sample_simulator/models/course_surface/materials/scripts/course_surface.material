@@ -1,0 +1,32 @@
+material AIFormula/CourseSurface
+{
+  technique
+  {
+    pass
+    {
+      lighting on
+      ambient 1 1 1 1
+      diffuse 1 1 1 1
+      texture_unit
+      {
+        texture course_surface.png
+        filtering trilinear
+      }
+    }
+  }
+}
+
+material AIFormula/InvisibleRoad
+{
+  technique
+  {
+    pass
+    {
+      scene_blend alpha_blend
+      depth_write off
+      diffuse 1 1 1 0
+      ambient 1 1 1 0
+      specular 0 0 0 0
+    }
+  }
+}

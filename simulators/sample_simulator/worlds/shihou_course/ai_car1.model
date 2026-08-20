@@ -4,13 +4,13 @@
 
     <model name="ground_plane">
       <static>true</static>
-      <pose>0 0 -0.001 0 0 0</pose>
+      <pose>3.675 -36.45 -0.001 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
             <plane>
               <normal>0 0 1</normal>
-              <size>200 200</size>
+              <size>128.7 90.5</size>
             </plane>
           </geometry>
           <surface>
@@ -27,13 +27,14 @@
           <geometry>
             <plane>
               <normal>0 0 1</normal>
-              <size>200 200</size>
+              <size>128.7 90.5</size>
             </plane>
           </geometry>
           <material>
             <script>
-              <uri>file://media/materials/scripts/gazebo.material</uri>
-              <name>Gazebo/Grey</name>
+              <uri>model://course_surface/materials/scripts</uri>
+              <uri>model://course_surface/materials/textures</uri>
+              <name>AIFormula/CourseSurface</name>
             </script>
           </material>
         </visual>
@@ -162,8 +163,8 @@
       <point>  0      1.8 0</point>
       <material>
         <script>
-          <uri>file://media/materials/scripts/gazebo.material</uri>
-          <name>Gazebo/Tertiary</name>
+          <uri>model://course_surface/materials/scripts</uri>
+          <name>AIFormula/InvisibleRoad</name>
         </script>
       </material>
     </road>
@@ -252,8 +253,8 @@
       <point>  0      1.8 0.001</point>
       <material>
         <script>
-          <uri>file://media/materials/scripts/gazebo.material</uri>
-          <name>Gazebo/White</name>
+          <uri>model://course_surface/materials/scripts</uri>
+          <name>AIFormula/InvisibleRoad</name>
         </script>
       </material>
     </road>
@@ -340,8 +341,8 @@
       <point>0 -1.5 0.001</point>
       <material>
         <script>
-          <uri>file://media/materials/scripts/gazebo.material</uri>
-          <name>Gazebo/White</name>
+          <uri>model://course_surface/materials/scripts</uri>
+          <name>AIFormula/InvisibleRoad</name>
         </script>
       </material>
     </road>
@@ -428,8 +429,8 @@
       <point>0 5.1 0.001</point>
       <material>
         <script>
-          <uri>file://media/materials/scripts/gazebo.material</uri>
-          <name>Gazebo/White</name>
+          <uri>model://course_surface/materials/scripts</uri>
+          <name>AIFormula/InvisibleRoad</name>
         </script>
       </material>
     </road>
@@ -516,8 +517,8 @@
       <point>  0      8.8 0</point>
       <material>
         <script>
-          <uri>file://media/materials/scripts/gazebo.material</uri>
-          <name>Gazebo/Green</name>
+          <uri>model://course_surface/materials/scripts</uri>
+          <name>AIFormula/InvisibleRoad</name>
         </script>
       </material>
     </road>   
@@ -604,14 +605,14 @@
           <point> 0 -5.2 0</point>
       <material>
         <script>
-          <uri>file://media/materials/scripts/gazebo.material</uri>
-          <name>Gazebo/Green</name>
+          <uri>model://course_surface/materials/scripts</uri>
+          <name>AIFormula/InvisibleRoad</name>
         </script>
       </material>
     </road>   
 
     <include>
-      <pose>0.0 0.0 0.01 0.0 0.0 </pose>
+      <pose>0.0 0.0 0.01 0.0 0.0 2.7</pose>
       <uri>model://ai_car1</uri>
     </include>
 
