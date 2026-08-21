@@ -43,10 +43,37 @@ def test_get_road_risk_value(mock_node):
 def test_get_benefit_value(mock_node):
     calculator = RoadRiskCalculator(mock_node, buffer_size=10)
     seek_positions = np.array([
-        [[0.0, 0.0, 0.0, 0.0, 0.0], [-1.0, -0.5, 0.0, 0.5, 1.0]]
+        [[0.0, 0.0, 0.0, 0.0, 0.0], [-1.0, -0.5, 0.0, 0.5, 1.0]],
+        [[1.0, 1.0, 1.0, 1.0, 1.0], [-1.0, -0.5, 0.0, 0.5, 1.0]],
     ])
 
-    benefits = calculator.get_benefit_value(seek_positions, y_hat_l=2.0, y_hat_r=-2.0)
-    # Center y_hat is (2.0 + -2.0) / 2 = 0.0
-    # Peak of benefit should be at seek_y = 0.0 (index 2)
-    assert np.argmax(benefits[0]) == 2
+    # Test scalar inputs
+    benefits_scalar = calculator.get_benefit_value(seek_positions, y_hat_l=2.0, y_hat_r=-2.0)
+    assert benefits_scalar.shape == (2, 5)
+    assert np.argmax(benefits_scalar[0]) == 2
+
+    # Test array inputs with different center per horizon
+    y_hat_l_arr = np.array([2.0, 3.0])
+    y_hat_r_arr = np.array([-2.0, -1.0])
+    # Horizon 0 center: (2.0 + -2.0)/2 = 0.0 -> peak at seek_y = 0.0 (index 2)
+    # Horizon 1 center: (3.0 + -1.0)/2 = 1.0 -> peak at seek_y = 1.0 (index 4)
+    benefits_array = calculator.get_benefit_value(
+        seek_positions, y_hat_l=y_hat_l_arr, y_hat_r=y_hat_r_arr
+    )
+    assert benefits_array.shape == (2, 5)
+    assert np.argmax(benefits_array[0]) == 2
+    assert np.argmax(benefits_array[1]) == 4
+
+
+def test_compute_road_risk_returns_y_hats_array(mock_node):
+    calculator = RoadRiskCalculator(mock_node, buffer_size=10)
+    seek_positions = np.array([
+        [[0.0, 0.0, 0.0, 0.0, 0.0], [-1.0, -0.5, 0.0, 0.5, 1.0]],
+        [[1.0, 1.0, 1.0, 1.0, 1.0], [-1.0, -0.5, 0.0, 0.5, 1.0]],
+    ])
+
+    risks, y_hats = calculator.compute_road_risk(seek_positions, Side.LEFT)
+    assert risks.shape == (2, 5)
+    assert isinstance(y_hats, np.ndarray)
+    assert len(y_hats) == 2
+

@@ -18,7 +18,6 @@ setup(
     entry_points={
         'console_scripts': [
             'extremum_seeking_mpc = extremum_seeking_mpc.extremum_seeking_mpc:main',
-            'extremum_seeking_mpc_torque_model = extremum_seeking_mpc.extremum_seeking_mpc_torque_model:main',
         ],
     },
 )

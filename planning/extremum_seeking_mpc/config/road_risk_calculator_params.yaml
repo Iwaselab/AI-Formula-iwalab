@@ -3,9 +3,9 @@
     road_risk_potential:
       left_gradient: 0.2
       right_gradient: 0.2
-      margin: 0.2
-      offset: 1.7
-      gain: 5.
+      margin: 1.6 # 白線間距離3.5m: (3.5/2 - 0.2安全余裕) = 1.55m
+      offset: 1.7 # margin + 0.1m
+      gain: 3.0
     
     road_weight:
       u: [0., 0.2, 0.4, 0.6, 0.7, 0.9, 1.0]
@@ -15,7 +15,7 @@
     road_identification:
       max_point_length: 50
       identification_gain: 10
-      forget_vector: [0.99995, 0.99995, 0.98]
+      forget_vector: [0.995, 0.995, 0.9]
       road_parameter_limit: 0.3
     
     road_benefit_function:

@@ -9,7 +9,7 @@ from .object_risk_calculator import ObjectRiskCalculator
 from .path_optimizer import PathOptimizer
 from .pose_predictor import PosePredictor
 from .road_risk_calculator import RoadRiskCalculator
-from .util import Side, Vector2, first_scalar
+from .util import Side, Vector2, calculate_decelerated_velocity, first_scalar
 
 class ExtremumSeekingMpc(Node):
 
@@ -196,22 +196,14 @@ class ExtremumSeekingMpc(Node):
     ) -> float:
 
         first_horizon_time = float(self.predict_horizon[0])
-
-        estimated_yaw_angle = abs(
-            self.ego_target_velocity * effective_curvature * first_horizon_time
+        return calculate_decelerated_velocity(
+            base_velocity=self.ego_target_velocity,
+            eval_velocity=self.ego_target_velocity,
+            curvature=effective_curvature,
+            dt=first_horizon_time,
+            deceleration_angle_maximum=self.deceleration_angle_maximum,
+            deceleration_gain=self.deceleration_gain,
         )
-        excess_yaw_angle = estimated_yaw_angle - self.deceleration_angle_maximum
-
-        if excess_yaw_angle <= 0.0:
-            return self.ego_target_velocity
-
-        target_speed_magnitude = max(
-            abs(self.ego_target_velocity) - self.deceleration_gain * excess_yaw_angle,
-            0.0,
-        )
-        target_direction = 1.0 if self.ego_target_velocity >= 0.0 else -1.0
-
-        return target_direction * target_speed_magnitude
 
     @staticmethod
     def calculate_yaw_rate_reference(
@@ -310,38 +302,6 @@ class ExtremumSeekingMpc(Node):
             vehicle_linear_velocity, yaw_rate = self.calculate_control_reference(
                 updated_effective_curvatures
             )
-
-            raw_curvature = float(
-                updated_curvatures[0]
-            )
-            
-            effective_curvature = float(
-                updated_effective_curvatures[0]
-            )
-
-            first_horizon_time = float(
-                self.predict_horizon[0]
-            )
-
-            estimated_yaw_angle = abs(
-                self.ego_target_velocity
-    	        * effective_curvature
-    	        * first_horizon_time
-            )
-
-            if abs(vehicle_linear_velocity) < 1.0e-9:
-                self.get_logger().warning(
-                    "V_ref became zero: "
-                    f"planned_speed={self.ego_target_velocity:.6f}, "
-                    f"raw_curvature={raw_curvature:.6f}, "
-                    f"effective_curvature={effective_curvature:.6f}, "
-                    f"horizon_time={first_horizon_time:.6f}, "
-                    f"estimated_yaw_angle={estimated_yaw_angle:.6f}, "
-                    f"angle_threshold="
-                    f"{self.deceleration_angle_maximum:.6f}, "
-                    f"deceleration_gain="
-                    f"{self.deceleration_gain:.6f}"
-                )
 
             commanded_ego_positions, _commanded_seek_positions = (
                 self.predict_ego_position(updated_effective_curvatures)

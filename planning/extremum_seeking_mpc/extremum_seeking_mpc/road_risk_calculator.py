@@ -1,10 +1,9 @@
-from dataclasses import dataclass
 from functools import partial
 import threading
-from typing import List, Tuple
+from typing import Tuple, Union
 import numpy as np
 from scipy.interpolate import interp1d
-from scipy.stats import multivariate_normal
+from scipy.stats import laplace
 
 from rclpy.node import Node
 from sensor_msgs.msg import PointCloud2
@@ -153,7 +152,9 @@ class RoadRiskCalculator:
 
         return float(sum(y_hats))
 
-    def compute_road_risk(self, seek_positions: np.ndarray, side: Side) -> Tuple[np.ndarray, float]:
+    def compute_road_risk(
+        self, seek_positions: np.ndarray, side: Side
+    ) -> Tuple[np.ndarray, np.ndarray]:
         with self.lock:
             road_offset = self.road_offset[side]
             point_length = self.point_length[side]
@@ -162,7 +163,7 @@ class RoadRiskCalculator:
         num_positions = len(seek_positions)
         num_seek_position = len(seek_positions[0][0])
         risks = np.zeros((num_positions, num_seek_position))
-        y_hat = 0.
+        y_hats = np.zeros(num_positions)
 
         for idx, seek_position in enumerate(seek_positions):
             num_seek_position = len(seek_position[0])
@@ -175,38 +176,71 @@ class RoadRiskCalculator:
                 continue
 
             y_hat = self.estimate_yhat(seek_x, point_length, road_offset, road_thetas)
+            y_hats[idx] = y_hat
 
             risk = self.get_road_risk_value(seek_y_positions, y_hat, side)
             risks[idx] = risk
 
-        return risks, y_hat
+        return risks, y_hats
 
-    def get_road_risk_value(self, seek_y_positions: np.ndarray, y_hat: float, side: Side) -> np.ndarray:
+    def get_road_risk_value(
+        self, seek_y_positions: np.ndarray, y_hat: float, side: Side
+    ) -> np.ndarray:
         risk = np.zeros(len(seek_y_positions))
         for idx, seek_y_position in enumerate(seek_y_positions):
             sigma = seek_y_position - y_hat
             if side == Side.RIGHT:
-                risk[idx] = self.road_risk_gain * \
-                    (-np.arctan(self.road_risk_left_gradient * (sigma + self.road_risk_margin)) + self.road_risk_offset)
+                risk[idx] = self.road_risk_gain * (
+                    -np.arctan(
+                        self.road_risk_right_gradient
+                        * (sigma + self.road_risk_margin)
+                    )
+                    + self.road_risk_offset
+                )
             elif side == Side.LEFT:
-                risk[idx] = self.road_risk_gain * \
-                    (np.arctan(self.road_risk_right_gradient * (sigma + self.road_risk_margin)) + self.road_risk_offset)
+                risk[idx] = self.road_risk_gain * (
+                    np.arctan(
+                        self.road_risk_left_gradient
+                        * (sigma - self.road_risk_margin)
+                    )
+                    + self.road_risk_offset
+                )
         return risk
 
-    def get_benefit_value(self, seek_positions: np.ndarray, y_hat_l: float, y_hat_r: float) -> np.ndarray:
+    def get_benefit_value(
+        self,
+        seek_positions: np.ndarray,
+        y_hat_l: Union[float, np.ndarray],
+        y_hat_r: Union[float, np.ndarray],
+    ) -> np.ndarray:
         num_positions = len(seek_positions)
         num_seek_position = len(seek_positions[0][0])
 
-        y_hat_center = (y_hat_l + y_hat_r) * 0.5
+        y_hat_l_arr = np.atleast_1d(y_hat_l)
+        y_hat_r_arr = np.atleast_1d(y_hat_r)
+
+        if len(y_hat_l_arr) < num_positions:
+            y_hat_l_arr = np.pad(
+                y_hat_l_arr, (0, num_positions - len(y_hat_l_arr)), mode='edge'
+            )
+        if len(y_hat_r_arr) < num_positions:
+            y_hat_r_arr = np.pad(
+                y_hat_r_arr, (0, num_positions - len(y_hat_r_arr)), mode='edge'
+            )
+
+        y_hat_center = (y_hat_l_arr + y_hat_r_arr) * 0.5
         scale = self.benefit_scale
-        covariance = [self.benefit_covariance]
+        # covariance相当のパラメータは「分布の広がり(スケール)」として使う
+        benefit_scale_b = self.benefit_covariance
 
         benefits = np.zeros((num_positions, num_seek_position))
 
         for idx, seek_position in enumerate(seek_positions):
-            seek_y_positions = [seek_y_position for seek_y_position in seek_position[1]]
+            seek_y_positions = np.asarray(seek_position[1])
 
-            pdf_values = multivariate_normal.pdf(seek_y_positions, mean=y_hat_center, cov=covariance)
+            pdf_values = laplace.pdf(
+                seek_y_positions, loc=y_hat_center[idx], scale=benefit_scale_b
+            )
             benefits[idx] = scale * pdf_values
 
         return benefits

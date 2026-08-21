@@ -4,7 +4,7 @@
       variance_x: 0.8
       variance_y: 0.8
       correlation_coefficient: 0.0
-      gain: 100.
+      gain: 5.0
       obstacle_class_ids: [1,2,3,4,5,6,7]  #障害物のID.[1,2]みたいに書く．{0: 'crosswalk', 1: 'blue_cone', 2: 'red_cone', 3: 'green_cone', 4: 'yellow_cone', 5: 'stop_sign', 6: 'go_sign', 7: 'obstacle'}
       crosswalk_class_ids: [0]  #横断歩道のID.
-      crosswalk_gain: 100.
+      crosswalk_gain: 5.0

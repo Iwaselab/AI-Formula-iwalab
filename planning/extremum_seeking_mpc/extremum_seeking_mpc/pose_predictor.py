@@ -4,7 +4,7 @@ import numpy as np
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from common_python.get_ros_parameter import get_ros_parameter
-from .util import Position2d, Pose, Velocity, first_scalar
+from .util import Position2d, Pose, Velocity, calculate_decelerated_velocity, first_scalar
 
 
 @dataclass
@@ -176,20 +176,15 @@ class PosePredictor:
         interval_duration: float,
     ) -> float:
 
-        nominal_velocity = self.planned_speed
-
-        estimated_yaw_change = abs(current_velocity * curvature * interval_duration)
-        excess_yaw_angle = estimated_yaw_change - self.deceleration_angle_maximum
-
-        if excess_yaw_angle <= 0.0:
-            return nominal_velocity
-
-        nominal_sign = 1.0 if nominal_velocity >= 0.0 else -1.0
-        reduced_speed_magnitude = max(
-            abs(nominal_velocity) - excess_yaw_angle * self.deceleration_gain, 0.0
+        return calculate_decelerated_velocity(
+            base_velocity=self.planned_speed,
+            eval_velocity=current_velocity,
+            curvature=curvature,
+            dt=interval_duration,
+            deceleration_angle_maximum=self.deceleration_angle_maximum,
+            deceleration_gain=self.deceleration_gain,
         )
 
-        return nominal_sign * reduced_speed_magnitude
 
     def _calculate_desired_accelerations(
         self,
