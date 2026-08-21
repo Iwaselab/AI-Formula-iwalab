@@ -5,17 +5,17 @@
     pd:
       dt: 0.01
       kp: 9
-      #10
+      #9
       ki: 2
+      #2
       kd: 0
       max_output: 50.0
       min_output: -50.0
 
       kp_v: 15
-      #13
+      #15
       ki_v: 4
-      #2
+      #4
       kd_v: 0
-      #-0.005
       max_output_v: 10.0
       min_output_v: -10.0
