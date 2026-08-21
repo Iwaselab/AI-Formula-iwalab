@@ -10,7 +10,7 @@ from ament_index_python.packages import get_package_share_directory
 def generate_launch_description():
     VEHICLE_NAME = "ai_car1"
     CAMERA_NAME = "zedx"
-    CAMERA_SN = "SN48311510"
+    CAMERA_SN = "SN40767081"
     CAMERA_RESOLUTION = "nHD"
 
     launch_args = (
