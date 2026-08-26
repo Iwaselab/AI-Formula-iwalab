@@ -5,6 +5,11 @@
 
     horizon_times: [2.0, 3.0, 4.0] #[s]
     planned_speed: [2.0, 0.0] # linear_velocity[m/s], angular_velocity[rad/s]
+    stop_sign_class_id: 5
+    go_sign_class_id: 6
+    decel_bbox_width_start: 15.0
+    stop_bbox_width_threshold: 45.0
+    min_velocity_scale: 0.2
     curvature_gain: 1.0
     benefit_gain: 3.0
     

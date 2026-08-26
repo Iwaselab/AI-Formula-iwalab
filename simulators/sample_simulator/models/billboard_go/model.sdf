@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<sdf version="1.6">
+  <model name="billboard_go">
+    <static>true</static>
+    <link name="billboard_link">
+      <visual name="billboard_visual">
+        <pose>0 0 2.0 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.42 0.42 0.05</size>
+          </box>
+        </geometry>
+        <material>
+          <script>
+            <uri>model://billboard_go/materials/scripts</uri>
+            <uri>model://billboard_go/materials/textures</uri>
+            <name>BillboardGo/Image</name>
+          </script>
+        </material>
+      </visual>
+    </link>
+  </model>
+</sdf>

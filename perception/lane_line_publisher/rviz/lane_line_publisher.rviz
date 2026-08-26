@@ -5,6 +5,7 @@ Panels:
     Property Tree Widget:
       Expanded:
         - /Debug1
+        - /ObjectInfoMultiArray1
         - /TF1/Frames1
         - /Minor grid1/Offset1
       Splitter Ratio: 0.39469027519226074
@@ -256,6 +257,19 @@ Visualization Manager:
           Value: true
       Enabled: true
       Name: Debug
+    - Class: ObjectInfoMultiArray
+      Enabled: true
+      ID Color: 255; 255; 255
+      Name: ObjectInfoMultiArray
+      Position Color: 0; 255; 0
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /aiformula_perception/object_publisher/object_info
+      Value: true
+      Width Color: 0; 150; 0
     - Class: rviz_default_plugins/TF
       Enabled: true
       Frame Timeout: 15

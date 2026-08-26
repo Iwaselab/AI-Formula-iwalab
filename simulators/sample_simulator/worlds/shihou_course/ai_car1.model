@@ -44,6 +44,11 @@
       <uri>model://sun</uri>
     </include>
 
+    <include>
+      <uri>model://billboard</uri>
+      <pose>-37.65 -25 0.75 1.5708 1.5708 0</pose>
+    </include>
+
     <scene>
       <shadows>false</shadows>
       <sky>

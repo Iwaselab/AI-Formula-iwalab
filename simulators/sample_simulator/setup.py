@@ -17,6 +17,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'traffic_light_controller = sample_simulator.traffic_light_controller:main',
         ],
     },
 )

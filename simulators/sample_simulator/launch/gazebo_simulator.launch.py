@@ -5,6 +5,7 @@ from launch.actions import (
 )
 from launch.substitutions import LaunchConfiguration
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 
 
@@ -72,10 +73,22 @@ def generate_launch_description():
         output='screen'
     )
 
+    traffic_light_controller = Node(
+        package='sample_simulator',
+        executable='traffic_light_controller',
+        name='traffic_light_controller',
+        output='screen',
+        parameters=[{
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
+            'switch_delay_sec': 60.0,
+        }],
+    )
+
     return LaunchDescription([
         *launch_args,
         tf_static_publisher,
         gzserver,
         gzclient,
         set_use_sim_time,
+        traffic_light_controller,
     ])

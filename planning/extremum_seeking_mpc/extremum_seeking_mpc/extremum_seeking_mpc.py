@@ -1,9 +1,14 @@
-from typing import Tuple
+import threading
+from enum import Enum, auto
+from typing import Optional, Tuple
+
 import numpy as np
 import rclpy
 from geometry_msgs.msg import TransformStamped, Twist
 from rclpy.node import Node
 from tf2_ros import TransformBroadcaster
+
+from aiformula_interfaces.msg import Rect, RectMultiArray
 from common_python.get_ros_parameter import get_ros_parameter
 from .object_risk_calculator import ObjectRiskCalculator
 from .path_optimizer import PathOptimizer
@@ -11,14 +16,24 @@ from .pose_predictor import PosePredictor
 from .road_risk_calculator import RoadRiskCalculator
 from .util import Side, Vector2, calculate_decelerated_velocity, first_scalar
 
+
+class State(Enum):
+    RUNNING = auto()
+    DECELERATING = auto()
+    STOPPED = auto()
+
+
 class ExtremumSeekingMpc(Node):
 
     def __init__(self):
         super().__init__('extremum_seeking_mpc')
 
+        self._lock = threading.Lock()
         self.init_parameters()
         self.init_members()
         self.init_connections()
+        self._init_traffic_sign_parameters()
+        self._init_traffic_sign_state()
 
         self.tf_broadcaster = TransformBroadcaster(self)
 
@@ -109,6 +124,88 @@ class ExtremumSeekingMpc(Node):
         self.twist_pub = self.create_publisher(
             Twist, 'pub_twist_command', self.buffer_size
         )
+        self._bbox_sub = self.create_subscription(
+            RectMultiArray,
+            'sub_bbox',
+            self._bbox_callback,
+            self.buffer_size,
+        )
+
+    def _init_traffic_sign_parameters(self) -> None:
+        self._stop_sign_class_id = int(get_ros_parameter(self, 'stop_sign_class_id'))
+        self._go_sign_class_id = int(get_ros_parameter(self, 'go_sign_class_id'))
+        self._stop_bbox_width_threshold = float(
+            get_ros_parameter(self, 'stop_bbox_width_threshold')
+        )
+        self._decel_bbox_width_start = float(
+            get_ros_parameter(self, 'decel_bbox_width_start')
+        )
+        self._min_velocity_scale = float(
+            get_ros_parameter(self, 'min_velocity_scale')
+        )
+
+        if not 0.0 <= self._min_velocity_scale <= 1.0:
+            raise ValueError('min_velocity_scale must be in [0.0, 1.0]')
+        if self._decel_bbox_width_start >= self._stop_bbox_width_threshold:
+            raise ValueError(
+                'decel_bbox_width_start must be smaller than stop_bbox_width_threshold'
+            )
+
+    def _init_traffic_sign_state(self) -> None:
+        self._state: State = State.RUNNING
+        self._latest_rects: list[Rect] = []
+
+    def _bbox_callback(self, msg: RectMultiArray) -> None:
+        with self._lock:
+            self._latest_rects = list(msg.rects)
+            self._update_traffic_sign_state()
+
+    def _get_largest_bbox(self, class_id: int) -> Optional[Rect]:
+        candidates = [r for r in self._latest_rects if r.class_id == class_id]
+        if not candidates:
+            return None
+        return max(candidates, key=lambda r: r.width)
+
+    def _update_traffic_sign_state(self) -> None:
+        stop_sign_bbox = self._get_largest_bbox(self._stop_sign_class_id)
+        go_sign_bbox = self._get_largest_bbox(self._go_sign_class_id)
+
+        if self._state == State.RUNNING and stop_sign_bbox is not None:
+            self._state = State.DECELERATING
+            self.get_logger().info(
+                f'[RUNNING -> DECELERATING] stop_sign detected '
+                f'(bbox_width={stop_sign_bbox.width:.1f}px)'
+            )
+        elif self._state == State.DECELERATING and stop_sign_bbox is not None:
+            if stop_sign_bbox.width >= self._stop_bbox_width_threshold:
+                self._state = State.STOPPED
+                self.get_logger().info(
+                    f'[DECELERATING -> STOPPED] bbox_width={stop_sign_bbox.width:.1f}px '
+                    f'>= threshold={self._stop_bbox_width_threshold:.1f}px'
+                )
+        elif self._state == State.STOPPED and go_sign_bbox is not None:
+            self._state = State.RUNNING
+            self.get_logger().info('[STOPPED -> RUNNING] go_sign detected')
+
+    def _compute_traffic_sign_velocity_scale(self) -> float:
+        if self._state == State.RUNNING:
+            return 1.0
+        if self._state == State.STOPPED:
+            return 0.0
+
+        stop_sign_bbox = self._get_largest_bbox(self._stop_sign_class_id)
+        if stop_sign_bbox is None:
+            return self._min_velocity_scale
+
+        bbox_width = stop_sign_bbox.width
+        span = self._stop_bbox_width_threshold - self._decel_bbox_width_start
+        if span <= 0.0:
+            return self._min_velocity_scale
+
+        progress = max(0.0, bbox_width - self._decel_bbox_width_start) / span
+        progress = min(progress, 1.0)
+        scale = 1.0 - progress * (1.0 - self._min_velocity_scale)
+        return float(scale)
 
     def calculate_effective_curvatures(
         self, curvatures: np.ndarray
@@ -302,6 +399,9 @@ class ExtremumSeekingMpc(Node):
             vehicle_linear_velocity, yaw_rate = self.calculate_control_reference(
                 updated_effective_curvatures
             )
+
+            traffic_sign_scale = self._compute_traffic_sign_velocity_scale()
+            vehicle_linear_velocity *= traffic_sign_scale
 
             commanded_ego_positions, _commanded_seek_positions = (
                 self.predict_ego_position(updated_effective_curvatures)
