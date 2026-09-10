@@ -154,6 +154,8 @@ class ExtremumSeekingMpc(Node):
     def _init_traffic_sign_state(self) -> None:
         self._state: State = State.RUNNING
         self._latest_rects: list[Rect] = []
+        # DECELERATING中にstop_signをロストした際、直前のスケール値を維持するために保持する
+        self._last_velocity_scale: float = 1.0
 
     def _bbox_callback(self, msg: RectMultiArray) -> None:
         with self._lock:
@@ -176,8 +178,14 @@ class ExtremumSeekingMpc(Node):
                 f'[RUNNING -> DECELERATING] stop_sign detected '
                 f'(bbox_width={stop_sign_bbox.width:.1f}px)'
             )
-        elif self._state == State.DECELERATING and stop_sign_bbox is not None:
-            if stop_sign_bbox.width >= self._stop_bbox_width_threshold:
+        elif self._state == State.DECELERATING:
+            if go_sign_bbox is not None:
+                self._state = State.RUNNING
+                self.get_logger().info('[DECELERATING -> RUNNING] go_sign detected')
+            elif (
+                stop_sign_bbox is not None
+                and stop_sign_bbox.width >= self._stop_bbox_width_threshold
+            ):
                 self._state = State.STOPPED
                 self.get_logger().info(
                     f'[DECELERATING -> STOPPED] bbox_width={stop_sign_bbox.width:.1f}px '
@@ -189,23 +197,28 @@ class ExtremumSeekingMpc(Node):
 
     def _compute_traffic_sign_velocity_scale(self) -> float:
         if self._state == State.RUNNING:
+            self._last_velocity_scale = 1.0
             return 1.0
         if self._state == State.STOPPED:
+            self._last_velocity_scale = 0.0
             return 0.0
 
         stop_sign_bbox = self._get_largest_bbox(self._stop_sign_class_id)
         if stop_sign_bbox is None:
-            return self._min_velocity_scale
+            # 看板ロスト時はロスト直前のスケールを維持する
+            return self._last_velocity_scale
 
         bbox_width = stop_sign_bbox.width
         span = self._stop_bbox_width_threshold - self._decel_bbox_width_start
         if span <= 0.0:
-            return self._min_velocity_scale
+            self._last_velocity_scale = self._min_velocity_scale
+            return self._last_velocity_scale
 
         progress = max(0.0, bbox_width - self._decel_bbox_width_start) / span
         progress = min(progress, 1.0)
         scale = 1.0 - progress * (1.0 - self._min_velocity_scale)
-        return float(scale)
+        self._last_velocity_scale = float(scale)
+        return self._last_velocity_scale
 
     def calculate_effective_curvatures(
         self, curvatures: np.ndarray
@@ -402,6 +415,7 @@ class ExtremumSeekingMpc(Node):
 
             traffic_sign_scale = self._compute_traffic_sign_velocity_scale()
             vehicle_linear_velocity *= traffic_sign_scale
+            yaw_rate *= traffic_sign_scale
 
             commanded_ego_positions, _commanded_seek_positions = (
                 self.predict_ego_position(updated_effective_curvatures)

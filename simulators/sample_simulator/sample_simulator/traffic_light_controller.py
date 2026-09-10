@@ -2,7 +2,7 @@
 """Traffic light controller node.
 
 Switches the billboard from red (stop) to green (go) after a configurable
-delay (default: 60 simulation seconds) by using Gazebo's DeleteEntity and
+delay (default: 75 simulation seconds) by using Gazebo's DeleteEntity and
 SpawnEntity services.
 """
 
@@ -78,7 +78,7 @@ class TrafficLightController(Node):
         super().__init__('traffic_light_controller')
 
         # Declare and read the switch delay parameter (seconds of sim time)
-        self.declare_parameter('switch_delay_sec', 60.0)
+        self.declare_parameter('switch_delay_sec', 75.0)
         self._delay = self.get_parameter('switch_delay_sec').value
 
         self.get_logger().info(

@@ -9,7 +9,7 @@ def test_traffic_sign_scale_decels_before_stop():
         SimpleNamespace(class_id=5, width=20.0),
         SimpleNamespace(class_id=6, width=10.0),
     ]
-    node._state = State.RUNNING
+    node._state = State.DECELERATING
     node._stop_sign_class_id = 5
     node._go_sign_class_id = 6
     node._stop_bbox_width_threshold = 45.0
@@ -31,3 +31,20 @@ def test_stop_light_zeroes_velocity_when_stopped():
     node._min_velocity_scale = 0.2
 
     assert node._compute_traffic_sign_velocity_scale() == 0.0
+
+
+def test_go_sign_cancels_deceleration():
+    node = ExtremumSeekingMpc.__new__(ExtremumSeekingMpc)
+    node._latest_rects = [SimpleNamespace(class_id=6, width=10.0)]
+    node._state = State.DECELERATING
+    node._stop_sign_class_id = 5
+    node._go_sign_class_id = 6
+    node._stop_bbox_width_threshold = 45.0
+    node._decel_bbox_width_start = 15.0
+    node._min_velocity_scale = 0.2
+    node.get_logger = lambda: SimpleNamespace(info=lambda _: None)
+
+    node._update_traffic_sign_state()
+
+    assert node._state == State.RUNNING
+    assert node._compute_traffic_sign_velocity_scale() == 1.0

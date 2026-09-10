@@ -80,7 +80,7 @@ def generate_launch_description():
         output='screen',
         parameters=[{
             'use_sim_time': LaunchConfiguration('use_sim_time'),
-            'switch_delay_sec': 60.0,
+            'switch_delay_sec': 75.0,
         }],
     )
 
