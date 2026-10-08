@@ -15,6 +15,8 @@ class DetectionFusion(Node):
     def __init__(self) -> None:
         super().__init__('detection_fusion')
         self.cv_bridge = CvBridge()
+        self._row_mask_pixel_threshold = self.declare_parameter(
+            'row_mask_pixel_threshold', 0).value
         self._image: Optional[np.ndarray] = None
         self._mask_old: Optional[np.ndarray] = None
         buffer_size = 10
@@ -47,6 +49,7 @@ class DetectionFusion(Node):
 
         fused = cv2.bitwise_or((mask_new > 0).astype(np.uint8),
                                (mask_old > 0).astype(np.uint8))
+        fused = self._filter_mask_rows(fused, self._row_mask_pixel_threshold)
 
         out = self.cv_bridge.cv2_to_imgmsg(fused, 'mono8')
         out.header = msg.header
@@ -56,6 +59,16 @@ class DetectionFusion(Node):
             anno = self.cv_bridge.cv2_to_imgmsg(self._overlay(self._image.copy(), fused), 'bgr8')
             anno.header = msg.header
             self._anno_pub.publish(anno)
+
+    @staticmethod
+    def _filter_mask_rows(mask: np.ndarray, threshold: int) -> np.ndarray:
+        if threshold <= 0:
+            return mask
+
+        filtered = mask.copy()
+        rows_to_remove = np.count_nonzero(filtered, axis=1) >= threshold
+        filtered[rows_to_remove, :] = 0
+        return filtered
 
     def _overlay(self, image: np.ndarray, mask: np.ndarray) -> np.ndarray:
         if mask.shape[:2] != image.shape[:2]:

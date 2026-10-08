@@ -173,11 +173,105 @@
       </material>
     </road>
 
-  
+    <road name="crosswalk_1">
+      <width>0.4</width>
+      <point>-1.5 2.2 0.002</point>
+      <point>1.5 2.2 0.002</point>
+      <material>
+        <script>
+          <uri>file://media/materials/scripts/gazebo.material</uri>
+          <name>Gazebo/White</name>
+        </script>
+      </material>
+    </road>
+
+        <road name="crosswalk_5">
+      <width>0.4</width>
+      <point>-1.5 1.4 0.002</point>
+      <point>1.5 1.4 0.002</point>
+      <material>
+        <script>
+          <uri>file://media/materials/scripts/gazebo.material</uri>
+          <name>Gazebo/White</name>
+        </script>
+      </material>
+    </road>
+
+    <road name="crosswalk_2">
+      <width>0.4</width>
+      <point>-1.5 3 0.002</point>
+      <point>1.5 3 0.002</point>
+      <material>
+        <script>
+          <uri>file://media/materials/scripts/gazebo.material</uri>
+          <name>Gazebo/White</name>
+        </script>
+      </material>
+    </road>
+
+    <road name="crosswalk_3">
+      <width>0.4</width>
+      <point>-1.5 3.8 0.002</point>
+      <point>1.5 3.8 0.002</point>
+      <material>
+        <script>
+          <uri>file://media/materials/scripts/gazebo.material</uri>
+          <name>Gazebo/White</name>
+        </script>
+      </material>
+    </road>
+
+    <road name="crosswalk_4">
+      <width>0.4</width>
+      <point>-1.5 4.6 0.002</point>
+      <point>1.5 4.6 0.002</point>
+      <material>
+        <script>
+          <uri>file://media/materials/scripts/gazebo.material</uri>
+          <name>Gazebo/White</name>
+        </script>
+      </material>
+    </road>
+
+        <road name="crosswalk_6">
+      <width>0.4</width>
+      <point>-1.5 0.6 0.002</point>
+      <point>1.5 0.6 0.002</point>
+      <material>
+        <script>
+          <uri>file://media/materials/scripts/gazebo.material</uri>
+          <name>Gazebo/White</name>
+        </script>
+      </material>
+    </road>
+
+        <road name="crosswalk_7">
+      <width>0.4</width>
+      <point>-1.5 -0.2 0.002</point>
+      <point>1.5 -0.2 0.002</point>
+      <material>
+        <script>
+          <uri>file://media/materials/scripts/gazebo.material</uri>
+          <name>Gazebo/White</name>
+        </script>
+      </material>
+    </road>
+
+        <road name="crosswalk_8">
+      <width>0.4</width>
+      <point>-1.5 -1 0.002</point>
+      <point>1.5 -1 0.002</point>
+      <material>
+        <script>
+          <uri>file://media/materials/scripts/gazebo.material</uri>
+          <name>Gazebo/White</name>
+        </script>
+      </material>
+    </road>
 
     <road name="my_road_center">
       <width>0.2</width>
-      <point>  0       1.800 0.001</point>
+      <point>-1.6 1.800 0.001</point>
       <point>-19.15 1.8 0.001</point>
       <point>-20.762 1.73 0.001</point>
       <point>-22.362 1.519 0.001</point>
@@ -254,7 +348,7 @@
       <point>29.712 1.519 0.001</point>
       <point>28.112 1.73 0.001</point>
       <point>26.5 1.8 0.001</point>
-      <point>  0      1.8 0.001</point>
+      <point>4.6      1.8 0.001</point>
       <material>
         <script>
           <uri>file://media/materials/scripts/gazebo.material</uri>
@@ -265,7 +359,7 @@
     
     <road name="my_road_left">
       <width>0.2</width>
-      <point>0 -1.5 0.001</point>
+      <point>-1.6 -1.5 0.001</point>
       <point>-19.15 -1.5 0.001</point>
       <point>-20.475 -1.558 0.001</point>
       <point>-21.789 -1.731 0.001</point>
@@ -342,7 +436,7 @@
       <point>29.139 -1.731 0.001</point>
       <point>27.825 -1.558 0.001</point>
       <point>26.5 -1.5 0.001</point>
-      <point>0 -1.5 0.001</point>
+      <point>1.6 -1.5 0.001</point>
       <material>
         <script>
           <uri>file://media/materials/scripts/gazebo.material</uri>
@@ -353,7 +447,7 @@
     
     <road name="my_road_right">
       <width>0.2</width>
-      <point>0 5.1 0.001</point>
+      <point>-1.6 5.1 0.001</point>
       <point>-19.15 5.1 0.001</point>
       <point>-21.05 5.017 0.001</point>
       <point>-22.936 4.769 0.001</point>
@@ -430,7 +524,7 @@
       <point>30.286 4.769 0.001</point>
       <point>28.4 5.017 0.001</point>
       <point>26.5 5.1 0.001</point>
-      <point>0 5.1 0.001</point>
+      <point>1.6 5.1 0.001</point>
       <material>
         <script>
           <uri>file://media/materials/scripts/gazebo.material</uri>
@@ -616,7 +710,7 @@
     </road>   
 
     <include>
-      <pose>0.0 0.0 0.01 0.0 0.0 3.1415</pose>
+      <pose>25 0.0 0.01 0.0 0.0 3.1415</pose>
       <uri>model://ai_car1</uri>
     </include>
 
