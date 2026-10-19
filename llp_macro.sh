@@ -85,21 +85,28 @@ tmux send-keys -t $SESSION:10 "source /opt/ros/foxy/setup.bash" C-m
 tmux send-keys -t $SESSION:10 "source install/setup.bash" C-m
 tmux send-keys -t $SESSION:10 "sleep 2 && ros2 launch extremum_seeking_mpc extremum_seeking_mpc.launch.py" C-m
 
-# 11つ目のウィンドウ: twist_logger.py
+# 11つ目のウィンドウ: crosswalk_lane_line_manager
 tmux new-window -t $SESSION
 tmux send-keys -t $SESSION:11 "cd ~/workspace/ros2_ws_git" C-m
 tmux send-keys -t $SESSION:11 "source /opt/ros/foxy/setup.bash" C-m
 tmux send-keys -t $SESSION:11 "source install/setup.bash" C-m
-tmux send-keys -t $SESSION:11 "cd ~/workspace/ros2_ws_git/src/AI-Formula-iwalab" C-m
-tmux send-keys -t $SESSION:11 "sleep 2 && python3 twist_logger.py --topic /aiformula_control/extremum_seeking_mpc/cmd_vel --output twist_log.csv" C-m
+tmux send-keys -t $SESSION:11 "sleep 2 && ros2 launch crosswalk_lane_line_manager crosswalk_lane_line_manager.launch.py" C-m
 
-# # 12つ目のウィンドウ: road_surface_segmenter
+# 12つ目のウィンドウ: twist_logger.py
+tmux new-window -t $SESSION
+tmux send-keys -t $SESSION:12 "cd ~/workspace/ros2_ws_git" C-m
+tmux send-keys -t $SESSION:12 "source /opt/ros/foxy/setup.bash" C-m
+tmux send-keys -t $SESSION:12 "source install/setup.bash" C-m
+tmux send-keys -t $SESSION:12 "cd ~/workspace/ros2_ws_git/src/AI-Formula-iwalab" C-m
+tmux send-keys -t $SESSION:12 "sleep 2 && python3 twist_logger.py --topic /aiformula_control/extremum_seeking_mpc/cmd_vel --output twist_log.csv" C-m
+
+# # 13つ目のウィンドウ: road_surface_segmenter
 # tmux new-window -t $SESSION
-# tmux send-keys -t $SESSION:12 "cd ~/workspace/ros2_ws_git" C-m
-# tmux send-keys -t $SESSION:12 "source /opt/ros/foxy/setup.bash" C-m
-# tmux send-keys -t $SESSION:12 "source install/setup.bash" C-m
-# tmux send-keys -t $SESSION:12 "export PYTHONPATH=~/workspace/ros2_ws_git/src/AI-Formula-iwalab/perception/yolopv2:\$PYTHONPATH" C-m
-# tmux send-keys -t $SESSION:12 "ros2 launch road_surface_segmenter road_surface_segmenter.launch.py" C-m
+# tmux send-keys -t $SESSION:13 "cd ~/workspace/ros2_ws_git" C-m
+# tmux send-keys -t $SESSION:13"source /opt/ros/foxy/setup.bash" C-m
+# tmux send-keys -t $SESSION:13 "source install/setup.bash" C-m
+# tmux send-keys -t $SESSION:13 "export PYTHONPATH=~/workspace/ros2_ws_git/src/AI-Formula-iwalab/perception/yolopv2:\$PYTHONPATH" C-m
+# tmux send-keys -t $SESSION:13 "ros2 launch road_surface_segmenter road_surface_segmenter.launch.py" C-m
 
 # tmuxセッションにアタッチ
 tmux attach-session -t $SESSION

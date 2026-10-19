@@ -1,0 +1,11 @@
+/**:
+  ros__parameters:
+    odom_frame_id: "odom"
+    vehicle_frame_id: "base_footprint"
+    compensation_fit_xmax: 10.0
+    crosswalk_bbox_width_threshold: 75.0
+    lane_line_publisher:
+      roi:
+        xmin: 0.0
+        xmax: 20.0
+      spacing: 1.0

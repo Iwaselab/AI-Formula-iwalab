@@ -96,6 +96,24 @@
   history: keep_last
   reliability: best_effort
 
+/aiformula_perception/lane_line_publisher/camera_lane_lines/left:
+  depth: 2
+  durability: volatile
+  history: keep_last
+  reliability: best_effort
+
+/aiformula_perception/lane_line_publisher/camera_lane_lines/right:
+  depth: 2
+  durability: volatile
+  history: keep_last
+  reliability: best_effort
+
+/aiformula_perception/lane_line_publisher/camera_lane_lines/center:
+  depth: 2
+  durability: volatile
+  history: keep_last
+  reliability: best_effort
+
 /aiformula_perception/lane_line_publisher/lane_lines/center:
   depth: 2
   durability: volatile

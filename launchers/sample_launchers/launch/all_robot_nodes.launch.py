@@ -62,6 +62,12 @@ def generate_launch_description():
             "camera_resolution": CAMERA_RESOLUTION,
         }.items(),
     )
+    crosswalk_lane_line_manager = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            osp.join(get_package_share_directory("crosswalk_lane_line_manager"),
+                     "launch/crosswalk_lane_line_manager.launch.py"),
+        ),
+    )
     # --- Command input from gamepad --- #
     gamepad_joy = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -149,6 +155,7 @@ def generate_launch_description():
         vectornav,
         object_road_detector,
         lane_line_publisher,
+        crosswalk_lane_line_manager,
         gamepad_joy,
         gamepad_teleop,
         twist_mux,
