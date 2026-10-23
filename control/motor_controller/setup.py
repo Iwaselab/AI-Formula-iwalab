@@ -19,6 +19,8 @@ setup(
         'console_scripts': [
             'motor_controller=motor_controller.motor_controller:main',
             'motor_controller_current_mode = motor_controller.motor_controller_current_mode:main',
+            'controller_speed_mode = motor_controller.controller_speed_mode:main',
+            'motor_controller_throttle = motor_controller.motor_controller_throttle:main',
         ],
     },
 )

@@ -5,7 +5,7 @@
 
     horizon_times: [2.0, 3.0, 4.0] #[s]
     planned_speed: [2.0, 0.0] # linear_velocity[m/s], angular_velocity[rad/s]
-    curvature_gain: 1.0
+    curvature_gain: 25
     benefit_gain: 3.0
     
     velocity_control:
