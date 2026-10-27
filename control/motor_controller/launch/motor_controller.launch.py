@@ -26,7 +26,10 @@ def generate_launch_description():
     )
     motor_controller = Node(
         package=PACKAGE_NAME,
-        executable='motor_controller_current_mode',
+        executable='controller_speed_mode',
+        #executable='motor_controller_throttle',
+        #executable='motor_controller',
+        #xecutable='motor_controller_current_mode',
         name='motor_controller',
         namespace="/aiformula_control",
         output="screen",

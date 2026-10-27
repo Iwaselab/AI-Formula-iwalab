@@ -17,6 +17,9 @@
       mpc:
         timeout : 0.3  # [sec]
         priority: 50
+      controller_test:
+        timeout : 0.3
+        priority: 50
       handle_controller_coasting:
         timeout : 0.3  # [sec]
         priority: 1
