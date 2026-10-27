@@ -30,6 +30,7 @@ def generate_launch_description():
                     {"base_footprint_frame_id": FRAME_IDS["base_footprint"], },],
         remappings=[
             ('pub_twist_command', TOPIC_NAMES["control"]["speed_command"]["mpc"]),
+            ('sub_bbox', TOPIC_NAMES["perception"]["objects"]["bounding_box"]),
             ('sub_road_l', TOPIC_NAMES["perception"]["lane_lines"]["left"]),
             ('sub_road_r', TOPIC_NAMES["perception"]["lane_lines"]["right"]),
             ('sub_odom', TOPIC_NAMES["sensing"]["odometry"]["gyro"]),

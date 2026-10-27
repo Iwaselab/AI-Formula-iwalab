@@ -40,9 +40,9 @@ def create_lane_line_publisher_node(context: LaunchContext) -> Tuple[Node]:
             remappings=[
                 ("mask_image", topic_names["perception"]["mask_image"]),
                 ("annotated_mask_image", topic_names["perception"]["annotated_mask_image"]),
-                ("lane_lines/left", topic_names["perception"]["lane_lines"]["left"]),
-                ("lane_lines/right", topic_names["perception"]["lane_lines"]["right"]),
-                ("lane_lines/center", topic_names["perception"]["lane_lines"]["center"]),
+                ("lane_lines/left", topic_names["perception"]["camera_lane_lines"]["left"]),
+                ("lane_lines/right", topic_names["perception"]["camera_lane_lines"]["right"]),
+                ("lane_lines/center", topic_names["perception"]["camera_lane_lines"]["center"]),
             ],
         ),
     )

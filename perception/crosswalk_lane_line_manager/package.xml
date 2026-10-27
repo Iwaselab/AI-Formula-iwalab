@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<?xml-model
+   href="http://download.ros.org/schema/package_format3.xsd"
+   schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>crosswalk_lane_line_manager</name>
+  <version>0.0.0</version>
+  <description>Switches camera lane lines to odometry-preserved crosswalk line estimates.</description>
+  <maintainer email="kota_sakazaki@jp.honda">Kota Sakazaki</maintainer>
+  <license>todo</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>rclcpp</depend>
+  <depend>sensor_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>tf2</depend>
+  <depend>tf2_ros</depend>
+  <depend>tf2_geometry_msgs</depend>
+  <depend>PCL</depend>
+  <depend>pcl_conversions</depend>
+  <depend>aiformula_interfaces</depend>
+  <depend>common_cpp</depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
