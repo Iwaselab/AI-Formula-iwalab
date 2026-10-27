@@ -4,9 +4,9 @@
 
     pd:
       dt: 0.01
-      kp: 4
+      kp: 6
       #9
-      ki: 0
+      ki: 2
       #2
       kd: 0
       max_output: 50.0
