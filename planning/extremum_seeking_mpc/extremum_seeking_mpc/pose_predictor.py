@@ -76,22 +76,10 @@ class PosePredictor:
             return self._get_parameter_or_default(node, name, value)
 
         self.integration_dt = default("prediction.integration_dt", 0.01)
+        self.velocity_response_time = default("prediction.velocity_response_time", 0.0)
+        self.yaw_rate_response_time = default("prediction.yaw_rate_response_time", 0.0)
 
-        self.velocity_response_time = default("prediction.velocity_response_time", 0.5)
-        self.yaw_rate_response_time = default("prediction.yaw_rate_response_time", 0.3)
-
-        self.linear_viscous_resistance = default("prediction.linear_viscous_resistance", 0.0)
-        self.yaw_viscous_resistance = default("prediction.yaw_viscous_resistance", 0.0)
-
-        self.vehicle_mass = default("vehicle.mass", -1.0)
-        self.vehicle_yaw_inertia = default("vehicle.yaw_inertia", -1.0)
-        self.wheel_diameter = default("wheel.diameter", -1.0)
-        self.wheel_tread = default("wheel.tread", -1.0)
-
-        self.wheel_torque_per_amp = default("motor.wheel_torque_per_amp", -1.0)
-        self.current_limit_amp = default("motor.current_limit_amp", 50.0)
-
-        self._validate_physical_parameters()
+        self._validate_parameters()
 
     @staticmethod
     def _get_parameter_safe(node: Node, name: str) -> Any:
@@ -107,28 +95,10 @@ class PosePredictor:
             node.declare_parameter(name, default_value)
         return node.get_parameter(name).value
 
-    def _validate_physical_parameters(self) -> None:
+    def _validate_parameters(self) -> None:
 
-        positive_parameters = {
-            "prediction.integration_dt": self.integration_dt,
-            "prediction.velocity_response_time": self.velocity_response_time,
-            "prediction.yaw_rate_response_time": self.yaw_rate_response_time,
-            "vehicle.mass": self.vehicle_mass,
-            "vehicle.yaw_inertia": self.vehicle_yaw_inertia,
-            "wheel.diameter": self.wheel_diameter,
-            "wheel.tread": self.wheel_tread,
-            "motor.wheel_torque_per_amp": self.wheel_torque_per_amp,
-            "motor.current_limit_amp": self.current_limit_amp,
-        }
-
-        invalid = [
-            name for name, value in positive_parameters.items() if float(value) <= 0.0
-        ]
-
-        if invalid:
-            raise ValueError(
-                f"The following parameters must be positive: {', '.join(invalid)}"
-            )
+        if self.integration_dt <= 0.0:
+            raise ValueError("prediction.integration_dt must be positive.")
 
         if self.curvature_radius_maximum <= 0.0:
             raise ValueError("curvature_radius_maximum must be positive.")
@@ -186,127 +156,6 @@ class PosePredictor:
         )
 
 
-    def _calculate_desired_accelerations(
-        self,
-        state: DynamicState,
-        curvature: float,
-        interval_duration: float,
-    ) -> Tuple[float, float]:
-
-        target_velocity = self._calculate_target_linear_velocity(
-            curvature, state.linear_velocity, interval_duration
-        )
-
-        curvature_reference_velocity = (
-            state.linear_velocity
-            if abs(state.linear_velocity) >= abs(target_velocity)
-            else target_velocity
-        )
-        target_yaw_rate = curvature_reference_velocity * curvature
-
-        desired_linear_acceleration = (
-            target_velocity - state.linear_velocity
-        ) / self.velocity_response_time
-        desired_yaw_acceleration = (
-            target_yaw_rate - state.yaw_rate
-        ) / self.yaw_rate_response_time
-
-        return float(desired_linear_acceleration), float(desired_yaw_acceleration)
-
-    def _desired_accelerations_to_currents(
-        self,
-        state: DynamicState,
-        desired_linear_acceleration: float,
-        desired_yaw_acceleration: float,
-    ) -> Tuple[float, float]:
-
-        wheel_radius = 0.5 * self.wheel_diameter
-
-        common_current = (
-            wheel_radius
-            * (
-                self.vehicle_mass * desired_linear_acceleration
-                + self.linear_viscous_resistance * state.linear_velocity
-            )
-            / (2.0 * self.wheel_torque_per_amp)
-        )
-
-        differential_current = (
-            wheel_radius
-            * (
-                self.vehicle_yaw_inertia * desired_yaw_acceleration
-                + self.yaw_viscous_resistance * state.yaw_rate
-            )
-            / (self.wheel_tread * self.wheel_torque_per_amp)
-        )
-
-        current_right = common_current + differential_current
-        current_left = common_current - differential_current
-
-        max_abs_current = max(abs(current_left), abs(current_right))
-        if max_abs_current > self.current_limit_amp:
-            scale = self.current_limit_amp / max_abs_current
-            current_left *= scale
-            current_right *= scale
-
-        return float(current_left), float(current_right)
-
-    def _currents_to_actual_accelerations(
-        self,
-        state: DynamicState,
-        current_left: float,
-        current_right: float,
-    ) -> Tuple[float, float]:
-
-        wheel_radius = 0.5 * self.wheel_diameter
-
-        torque_left = self.wheel_torque_per_amp * current_left
-        torque_right = self.wheel_torque_per_amp * current_right
-
-        drive_force = (torque_right + torque_left) / wheel_radius
-        linear_resistance_force = self.linear_viscous_resistance * state.linear_velocity
-        linear_acceleration = (
-            drive_force - linear_resistance_force
-        ) / self.vehicle_mass
-
-        yaw_moment = (
-            self.wheel_tread / (2.0 * wheel_radius) * (torque_right - torque_left)
-        )
-        yaw_resistance_moment = self.yaw_viscous_resistance * state.yaw_rate
-        yaw_acceleration = (
-            yaw_moment - yaw_resistance_moment
-        ) / self.vehicle_yaw_inertia
-
-        return float(linear_acceleration), float(yaw_acceleration)
-
-    @staticmethod
-    def _integrate_state(
-        state: DynamicState,
-        linear_acceleration: float,
-        yaw_acceleration: float,
-        dt: float,
-    ) -> DynamicState:
-
-        next_linear_velocity = state.linear_velocity + linear_acceleration * dt
-        next_yaw_rate = state.yaw_rate + yaw_acceleration * dt
-
-        middle_linear_velocity = 0.5 * (state.linear_velocity + next_linear_velocity)
-        middle_yaw_rate = 0.5 * (state.yaw_rate + next_yaw_rate)
-
-        next_yaw = state.yaw + middle_yaw_rate * dt
-        middle_yaw = 0.5 * (state.yaw + next_yaw)
-
-        next_x = state.x + middle_linear_velocity * np.cos(middle_yaw) * dt
-        next_y = state.y + middle_linear_velocity * np.sin(middle_yaw) * dt
-
-        return DynamicState(
-            x=float(next_x),
-            y=float(next_y),
-            yaw=float(next_yaw),
-            linear_velocity=float(next_linear_velocity),
-            yaw_rate=float(next_yaw_rate),
-        )
-
     def _simulate_interval(
         self,
         initial_state: DynamicState,
@@ -325,21 +174,50 @@ class PosePredictor:
         state = DynamicState(**vars(initial_state))
 
         for _ in range(num_steps):
-            desired_linear_acceleration, desired_yaw_acceleration = (
-                self._calculate_desired_accelerations(
-                    state, effective_curvature, interval_duration
-                )
+            target_velocity = self._calculate_target_linear_velocity(
+                effective_curvature, state.linear_velocity, interval_duration
             )
-            current_left, current_right = self._desired_accelerations_to_currents(
-                state, desired_linear_acceleration, desired_yaw_acceleration
+
+            curvature_reference_velocity = (
+                state.linear_velocity
+                if abs(state.linear_velocity) >= abs(target_velocity)
+                else target_velocity
             )
-            actual_linear_acceleration, actual_yaw_acceleration = (
-                self._currents_to_actual_accelerations(
-                    state, current_left, current_right
-                )
+            target_yaw_rate = curvature_reference_velocity * effective_curvature
+
+            if self.velocity_response_time > 0.0:
+                linear_acc = (
+                    target_velocity - state.linear_velocity
+                ) / self.velocity_response_time
+                next_linear_velocity = state.linear_velocity + linear_acc * dt
+            else:
+                next_linear_velocity = target_velocity
+
+            if self.yaw_rate_response_time > 0.0:
+                yaw_acc = (
+                    target_yaw_rate - state.yaw_rate
+                ) / self.yaw_rate_response_time
+                next_yaw_rate = state.yaw_rate + yaw_acc * dt
+            else:
+                next_yaw_rate = target_yaw_rate
+
+            middle_linear_velocity = 0.5 * (
+                state.linear_velocity + next_linear_velocity
             )
-            state = self._integrate_state(
-                state, actual_linear_acceleration, actual_yaw_acceleration, dt
+            middle_yaw_rate = 0.5 * (state.yaw_rate + next_yaw_rate)
+
+            next_yaw = state.yaw + middle_yaw_rate * dt
+            middle_yaw = 0.5 * (state.yaw + next_yaw)
+
+            next_x = state.x + middle_linear_velocity * np.cos(middle_yaw) * dt
+            next_y = state.y + middle_linear_velocity * np.sin(middle_yaw) * dt
+
+            state = DynamicState(
+                x=float(next_x),
+                y=float(next_y),
+                yaw=float(next_yaw),
+                linear_velocity=float(next_linear_velocity),
+                yaw_rate=float(next_yaw_rate),
             )
 
         return state

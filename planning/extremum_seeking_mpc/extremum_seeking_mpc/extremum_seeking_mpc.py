@@ -46,8 +46,8 @@ class ExtremumSeekingMpc(Node):
         )
 
         self.get_logger().info(
-            "ExtremumSeekingMpc started with dynamic "
-            "torque/acceleration-aware pose prediction."
+            "ExtremumSeekingMpc started with kinematic "
+            "velocity-command pose prediction."
         )
         self.get_logger().info(
             f"planned_speed = {self.ego_target_velocity:.6f} m/s"

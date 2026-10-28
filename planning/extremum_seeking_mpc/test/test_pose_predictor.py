@@ -44,3 +44,17 @@ def test_pose_predictor_initialization(mock_node):
 
     assert predictor.horizon_length == 3
     assert predictor.planned_speed == 5.0
+
+
+def test_predict_relative_ego_positions(mock_node):
+    horizon_times = [0.5, 1.0, 1.5]
+    seek_y_positions = np.zeros((3, 5))
+    predictor = PosePredictor(mock_node, horizon_times, seek_y_positions, buffer_size=10)
+    predictor.ego_current_velocity = Velocity(linear=2.0, angular=0.0)
+
+    curvatures = np.array([0.0, 0.0, 0.0])
+    positions = predictor.predict_relative_ego_positions(curvatures)
+
+    assert positions.shape == (3, 2)
+    assert positions[0, 0] > 0.0  # x方向（前進）に進んでいること
+    assert len(predictor.last_predicted_yaws) == 3

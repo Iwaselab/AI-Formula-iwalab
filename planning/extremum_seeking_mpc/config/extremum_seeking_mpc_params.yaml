@@ -19,19 +19,16 @@
 
     prediction:
       integration_dt: 0.01
-      velocity_response_time: 0.4
-      yaw_rate_response_time: 0.25
-      linear_viscous_resistance: 0.0
-      yaw_viscous_resistance: 0.0
+      velocity_response_time: 0.0  # 速度追従時定数 (0.0で即時追従)
+      yaw_rate_response_time: 0.0  # 旋回角速度追従時定数 (0.0で即時追従)
 
-    vehicle:
-      mass: 70.00        # 実機質量 [kg](大体)
-      yaw_inertia: 5.00 # ヨー慣性モーメント [kg m^2]
-
-    wheel:
-      diameter: 0.254  # [m] 確定
-      tread: 0.60      # [m]  確定
-
-    motor:
-      wheel_torque_per_amp: 1.00  # 実効ホイール軸トルク係数 [N m/A]
-      current_limit_amp: 50.0
+    # Note: トルク制御（動力学モデル）用のパラメータ（速度指令制御では不要）
+    # vehicle:
+    #   mass: 70.00
+    #   yaw_inertia: 5.00
+    # wheel:
+    #   diameter: 0.254
+    #   tread: 0.60
+    # motor:
+    #   wheel_torque_per_amp: 1.00
+    #   current_limit_amp: 50.0
