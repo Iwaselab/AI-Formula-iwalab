@@ -27,6 +27,10 @@ perception:
     left: "/aiformula_perception/lane_line_publisher/lane_lines/left"
     right: "/aiformula_perception/lane_line_publisher/lane_lines/right"
     center: "/aiformula_perception/lane_line_publisher/lane_lines/center"
+  camera_lane_lines:
+    left: "/aiformula_perception/lane_line_publisher/camera_lane_lines/left"
+    right: "/aiformula_perception/lane_line_publisher/camera_lane_lines/right"
+    center: "/aiformula_perception/lane_line_publisher/camera_lane_lines/center"
 
 control:
   joy:
