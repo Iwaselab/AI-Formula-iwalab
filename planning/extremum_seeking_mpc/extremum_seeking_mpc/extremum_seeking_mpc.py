@@ -66,6 +66,7 @@ class ExtremumSeekingMpc(Node):
         ).reshape(-1)
 
         self.curvature_gain = get("curvature_gain")
+        self.yaw_rate_gain = get("yaw_rate_gain")
         self.benefit_gain = get("benefit_gain")
         self.deceleration_angle_maximum = get(
             "velocity_control.deceleration_angle_maximum"
@@ -93,6 +94,8 @@ class ExtremumSeekingMpc(Node):
             raise ValueError(
                 "velocity_control.deceleration_gain must be non-negative."
             )
+        if self.yaw_rate_gain < 0.0:
+            raise ValueError("yaw_rate_gain must be non-negative.")
 
         self.horizon_length = len(self.predict_horizon)
 
@@ -333,7 +336,7 @@ class ExtremumSeekingMpc(Node):
         )
         yaw_rate_reference = self.calculate_yaw_rate_reference(
             linear_velocity_reference, first_curvature
-        )
+        ) * self.yaw_rate_gain
 
         return linear_velocity_reference, yaw_rate_reference
 

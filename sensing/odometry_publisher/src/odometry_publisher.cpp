@@ -46,10 +46,14 @@ double OdometryPublisher::calcTimeDelta(const builtin_interfaces::msg::Time& msg
 }
 
 void OdometryPublisher::updatePosition(const double& vehicle_linear_velocity, const double& dt) {
-    vehicle_linear_velocity_.x = vehicle_linear_velocity * cos(yaw_angle_);
-    vehicle_linear_velocity_.y = vehicle_linear_velocity * sin(yaw_angle_);
-    pos_.x += vehicle_linear_velocity_.x * dt;
-    pos_.y += vehicle_linear_velocity_.y * dt;
+    const double world_velocity_x = vehicle_linear_velocity * cos(yaw_angle_);
+    const double world_velocity_y = vehicle_linear_velocity * sin(yaw_angle_);
+
+    // Odometry twist is expressed in the child (vehicle) frame.
+    vehicle_linear_velocity_.x = vehicle_linear_velocity;
+    vehicle_linear_velocity_.y = 0.0;
+    pos_.x += world_velocity_x * dt;
+    pos_.y += world_velocity_y * dt;
 }
 
 nav_msgs::msg::Odometry OdometryPublisher::createOdometryMsg(const builtin_interfaces::msg::Time& msg_time) const {
