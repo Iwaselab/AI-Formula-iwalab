@@ -1,0 +1,214 @@
+<?xml version="1.0"?>
+<robot name="trx_s">
+
+<link name="base_link"/>
+
+  <!-- hand1 -->
+  <link name="base_link1">
+    <visual>
+      <geometry>
+        <mesh filename="package://trx/urdf/meshes/hand.DAE"/>
+      </geometry>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </visual>
+  </link>
+  <joint name="base1_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="base_link1"/>
+    <origin xyz="0 0.05 0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- hand finger1 -->
+  <link name="thumb_link1">
+    <visual>
+      <geometry>
+        <mesh filename="package://trx/urdf/meshes/thumb.DAE"/>
+      </geometry>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </visual>
+  </link>
+  <joint name="thumb_joint1" type="revolute">
+    <parent link="base_link1"/>
+    <child link="thumb_link1"/>
+    <origin xyz="0.023 0 0.054" rpy="0 -0.08 0"/>
+    <axis   xyz="0 1 0"/>
+    <limit lower="-2.0" upper="0.0" effort="50" velocity="10.0"/>
+  </joint>
+
+  <!-- hand index base1 -->
+  <link name="indexbase_link1">
+    <visual>
+      <geometry>
+        <mesh filename="package://trx/urdf/meshes/index_base.DAE"/>
+      </geometry>
+      <origin xyz="0 0 0" rpy="0 -0 0"/>
+    </visual>
+  </link>
+  <joint name="indexbase_joint1" type="revolute">
+    <parent link="base_link1"/>
+    <child  link="indexbase_link1"/>
+    <origin xyz="-0.013 0 0.087" rpy="0 -0 0"/>
+    <axis   xyz="0 1 0"/>
+    <limit lower="0.0" upper="1.2" effort="50" velocity="0.5"/>
+  </joint>
+
+  <!-- hand index middle1 -->
+  <link name="indexmid_link1">
+    <visual>
+      <geometry>
+        <mesh filename="package://trx/urdf/meshes/index_mid.DAE"/>
+      </geometry>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </visual>
+  </link>
+  <joint name="indexmid_joint1" type="revolute">
+    <parent link="indexbase_link1"/>
+    <child  link="indexmid_link1"/>
+    <origin xyz="0 0 0.045" rpy="0 0.52 0"/>
+    <axis   xyz="0 1 0"/>
+    <limit lower="0.0" upper="0.8" effort="50" velocity="0.5"/>
+  </joint>
+
+  <!-- hand index end1 -->
+  <link name="indexend_link1">
+    <visual>
+      <geometry>
+        <mesh filename="package://trx/urdf/meshes/index_end.DAE"/>
+      </geometry>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </visual>
+  </link>
+  <joint name="indexend_joint1" type="revolute">
+    <parent link="indexmid_link1"/>
+    <child  link="indexend_link1"/>
+    <origin xyz="-0.005 0 0.025" rpy="0 -1.13 0"/>
+    <axis   xyz="0 1 0"/>
+    <limit lower="0.0" upper="0.8" effort="50" velocity="0.5"/>
+  </joint>
+
+<!-- #################### -->
+
+  <!-- hand2 -->
+  <link name="base_link2">
+    <visual>
+      <geometry>
+        <mesh filename="package://trx/urdf/meshes/hand.DAE"/>
+      </geometry>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </visual>
+  </link>
+  <joint name="base2_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="base_link2"/>
+    <origin xyz="0 -0.05 0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- hand finger2 -->
+  <link name="thumb_link2">
+    <visual>
+      <geometry>
+        <mesh filename="package://trx/urdf/meshes/thumb.DAE"/>
+      </geometry>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </visual>
+  </link>
+  <joint name="thumb_joint2" type="revolute">
+    <parent link="base_link2"/>
+    <child link="thumb_link2"/>
+    <origin xyz="0.023 0 0.054" rpy="0 -0.08 0"/>
+    <axis   xyz="0 1 0"/>
+    <limit lower="-2.0" upper="0.0" effort="50" velocity="10.0"/>
+  </joint>
+
+  <!-- hand index base2 -->
+  <link name="indexbase_link2">
+    <visual>
+      <geometry>
+        <mesh filename="package://trx/urdf/meshes/index_base.DAE"/>
+      </geometry>
+      <origin xyz="0 0 0" rpy="0 -0 0"/>
+    </visual>
+  </link>
+  <joint name="indexbase_joint2" type="revolute">
+    <parent link="base_link2"/>
+    <child  link="indexbase_link2"/>
+    <origin xyz="-0.013 0 0.087" rpy="0 -0 0"/>
+    <axis   xyz="0 1 0"/>
+    <limit lower="0.0" upper="1.2" effort="50" velocity="0.5"/>
+  </joint>
+
+  <!-- hand index middle2 -->
+  <link name="indexmid_link2">
+    <visual>
+      <geometry>
+        <mesh filename="package://trx/urdf/meshes/index_mid.DAE"/>
+      </geometry>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </visual>
+  </link>
+  <joint name="indexmid_joint2" type="revolute">
+    <parent link="indexbase_link2"/>
+    <child  link="indexmid_link2"/>
+    <origin xyz="0 0 0.045" rpy="0 0.52 0"/>
+    <axis   xyz="0 1 0"/>
+    <limit lower="0.0" upper="0.8" effort="50" velocity="0.5"/>
+  </joint>
+
+  <!-- hand index end2 -->
+  <link name="indexend_link2">
+    <visual>
+      <geometry>
+        <mesh filename="package://trx/urdf/meshes/index_end.DAE"/>
+      </geometry>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </visual>
+  </link>
+  <joint name="indexend_joint2" type="revolute">
+    <parent link="indexmid_link2"/>
+    <child  link="indexend_link2"/>
+    <origin xyz="-0.005 0 0.025" rpy="0 -1.13 0"/>
+    <axis   xyz="0 1 0"/>
+    <limit lower="0.0" upper="0.8" effort="50" velocity="0.5"/>
+  </joint>
+
+  <ros2_control name="SeedHW" type="system">
+    <hardware>
+      <plugin>trx/SeedHardwareInterface</plugin>
+      <param name="serial_port">/dev/trx_s</param>
+      <param name="can_id1">1</param>
+      <param name="can_id2">2</param>
+      <param name="controller_rate">20.0</param>
+    </hardware>
+
+    <joint name="indexbase_joint1">
+      <state_interface name="position"/>
+    </joint>
+    <joint name="indexmid_joint1">
+      <state_interface name="position"/>
+    </joint>
+    <joint name="indexend_joint1">
+      <state_interface name="position"/>
+    </joint>
+    <joint name="thumb_joint1">
+      <command_interface name="position"/>
+      <command_interface name="time"/>
+      <state_interface name="position"/>
+    </joint>
+
+    <joint name="indexbase_joint2">
+      <state_interface name="position"/>
+    </joint>
+    <joint name="indexmid_joint2">
+      <state_interface name="position"/>
+    </joint>
+    <joint name="indexend_joint2">
+      <state_interface name="position"/>
+    </joint>
+    <joint name="thumb_joint2">
+      <command_interface name="position"/>
+      <command_interface name="time"/>
+      <state_interface name="position"/>
+    </joint>
+  </ros2_control>
+
+</robot>

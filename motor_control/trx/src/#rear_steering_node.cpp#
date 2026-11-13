@@ -1,0 +1,275 @@
+#include <rclcpp/rclcpp.hpp>
+#include <geometry_msgs/msg/twist.hpp>
+
+#include <memory>
+#include <string>
+#include <cstdint>
+
+#include "trx/seed_command.hpp"
+
+
+class RearSteeringNode : public rclcpp::Node
+{
+public:
+    RearSteeringNode()
+    : Node("rear_steering_node"),
+      motor_ready_(false),
+      previous_state_("UNKNOWN")
+    {
+        // ==========================================
+        // cmd_velの購読
+        // ==========================================
+
+        subscription_ = this->create_subscription<geometry_msgs::msg::Twist>(
+            "/aiformula_control/twist_mux/cmd_vel",
+            10,
+            std::bind(
+                &RearSteeringNode::cmdVelCallback,
+                this,
+                std::placeholders::_1));
+
+        // ==========================================
+        // モータ初期化
+        // ==========================================
+
+        motor_ = std::make_shared<SeedCommand>(
+            "/dev/ttyACM0",
+            115200);
+
+        // COMポートを開く
+        if (!motor_->COM_Open())
+        {
+            RCLCPP_ERROR(
+                this->get_logger(),
+                "COM Open Failed");
+
+            motor_ready_ = false;
+        }
+        else
+        {
+            RCLCPP_INFO(
+                this->get_logger(),
+                "Motor COM Open Success");
+
+            const uint8_t id1 = 1;
+            const uint8_t id2 = 2;
+
+            // サーボON
+            motor_->onServo(id1, 1);
+            motor_->onServo(id2, 1);
+
+            RCLCPP_INFO(
+                this->get_logger(),
+                "Motors servo ON");
+
+            motor_ready_ = true;
+        }
+
+        RCLCPP_INFO(
+            this->get_logger(),
+            "Rear steering node started.");
+    }
+
+
+    // ==========================================
+    // デストラクタ
+    // ==========================================
+
+    ~RearSteeringNode()
+    {
+        if (motor_ready_ && motor_)
+        {
+            const uint8_t id1 = 1;
+            const uint8_t id2 = 2;
+
+            // サーボOFF
+            motor_->onServo(id1, 0);
+            motor_->onServo(id2, 0);
+
+            // COM通信終了
+            motor_->COM_Close();
+
+            RCLCPP_INFO(
+                this->get_logger(),
+                "Motors servo OFF and COM closed.");
+        }
+    }
+
+
+private:
+
+    // ==========================================
+    // cmd_vel Callback
+    // ==========================================
+
+    void cmdVelCallback(
+        const geometry_msgs::msg::Twist::SharedPtr msg)
+    {
+        double angular_z = msg->angular.z;
+
+        std::string current_state;
+
+
+        // ==========================================
+        // angular.zによる旋回状態の判定
+        // ==========================================
+
+        if (angular_z == 0.0)
+        {
+            // 直進
+            current_state = "STRAIGHT";
+        }
+        else if (angular_z > 0.0)
+        {
+            // 右旋回
+            current_state = "RIGHT";
+        }
+        else
+        {
+            // 左旋回
+            current_state = "LEFT";
+        }
+
+
+        // ==========================================
+        // 状態が変化したときだけ処理
+        // ==========================================
+
+        if (current_state != previous_state_)
+        {
+            RCLCPP_INFO(
+                this->get_logger(),
+                "angular.z = %.3f -> %s",
+                angular_z,
+                current_state.c_str());
+
+
+            // ==========================================
+            // モータが使用可能な場合のみ動作
+            // ==========================================
+
+            if (motor_ready_)
+            {
+                // --------------------------------------
+                // STRAIGHT
+                // --------------------------------------
+
+                if (current_state == "STRAIGHT")
+                {
+                    RCLCPP_INFO(
+                        this->get_logger(),
+                        "Rear steering: STRAIGHT");
+
+                    // ID1
+                    motor_->actuateRelativePositionBySpeed(
+                        1,
+                        2000,
+                        80000);
+
+                    // ID2
+                    motor_->actuateRelativePositionBySpeed(
+                        2,
+                        2000,
+                        80000);
+                }
+
+
+                // --------------------------------------
+                // RIGHT
+                // --------------------------------------
+
+                else if (current_state == "RIGHT")
+                {
+                    RCLCPP_INFO(
+                        this->get_logger(),
+                        "Rear steering: RIGHT");
+
+                    // ID1
+                    motor_->actuateRelativePositionBySpeed(
+                        1,
+                        2000,
+                        80000);
+
+                    // ID2
+                    motor_->actuateRelativePositionBySpeed(
+                        2,
+                        2000,
+                        -80000);
+                }
+
+
+                // --------------------------------------
+                // LEFT
+                // --------------------------------------
+
+                else if (current_state == "LEFT")
+                {
+                    RCLCPP_INFO(
+                        this->get_logger(),
+                        "Rear steering: LEFT");
+
+                    // ID1
+                    motor_->actuateRelativePositionBySpeed(
+                        1,
+                        2000,
+                        -80000);
+
+                    // ID2
+                    motor_->actuateRelativePositionBySpeed(
+                        2,
+                        2000,
+                        80000);
+                }
+            }
+            else
+            {
+                RCLCPP_WARN(
+                    this->get_logger(),
+                    "Motor is not ready. Command was not sent.");
+            }
+
+
+            // 現在の状態を保存
+            previous_state_ = current_state;
+        }
+    }
+
+
+    // ==========================================
+    // ROS2 Subscription
+    // ==========================================
+
+    rclcpp::Subscription<
+        geometry_msgs::msg::Twist
+    >::SharedPtr subscription_;
+
+
+    // ==========================================
+    // モータ制御
+    // ==========================================
+
+    std::shared_ptr<SeedCommand> motor_;
+
+    bool motor_ready_;
+
+
+    // ==========================================
+    // 前回の旋回状態
+    // ==========================================
+
+    std::string previous_state_;
+};
+
+
+int main(int argc, char * argv[])
+{
+    rclcpp::init(argc, argv);
+
+    auto node = std::make_shared<RearSteeringNode>();
+
+    rclcpp::spin(node);
+
+    rclcpp::shutdown();
+
+    return 0;
+}

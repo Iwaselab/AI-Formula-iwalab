@@ -10,7 +10,7 @@
     axis_angular:
       yaw: 3  # R-Stick Horizontal
     scale_angular:
-      yaw: 2.0  # [rad/s]
+      yaw: 2.5  # [rad/s]
 
     enable_button: 6        # L2
     enable_turbo_button: 4  # L1

@@ -576,7 +576,7 @@ class MotorController(Node):
         wheel_angular_velocities[
             DriveWheel.LEFT
         ] = (
-            (linear_velocity )*18
+            (linear_velocity )
             # + u_V
             - (self.tread / self.diameter)
             * angular_velocity
@@ -587,7 +587,7 @@ class MotorController(Node):
         wheel_angular_velocities[
             DriveWheel.RIGHT
         ] = (
-            (linear_velocity )*18
+            (linear_velocity )
             # + u_V
             + (self.tread / self.diameter)
             * angular_velocity
@@ -599,7 +599,7 @@ class MotorController(Node):
         # 秒→分変換係数
 
         rpm = (
-            wheel_angular_velocities
+            wheel_angular_velocities*25
            
         )
         #* (minute_to_second / (2. * np.pi))

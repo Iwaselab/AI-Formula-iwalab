@@ -1,0 +1,5 @@
+<library path="seed_hardware_interface">
+  <class name="trx/SeedHardwareInterface"
+         type="trx::SeedHardwareInterface"
+         base_class_type="hardware_interface::SystemInterface"/>
+</library>
