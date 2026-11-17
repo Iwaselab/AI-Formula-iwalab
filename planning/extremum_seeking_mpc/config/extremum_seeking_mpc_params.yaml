@@ -13,7 +13,7 @@
     curvature_gain: 1.0
     yaw_rate_gain: 1.0
     benefit_gain: 3.0
-    command_curvature_point: 3 # 実車指令に使う曲率の点番号（1または3）
+    command_curvature_point: 2 # 実車指令に使う曲率の点番号（1、2、または3）
     
     velocity_control:
       deceleration_angle_maximum: 0.267  # R=15m, v=2.0m/s, horizon[0]=2.0sで計算
