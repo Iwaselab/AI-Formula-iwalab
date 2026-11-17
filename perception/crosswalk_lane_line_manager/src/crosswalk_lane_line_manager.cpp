@@ -129,6 +129,33 @@ void CrosswalkLaneLineManager::collectLineFrame(size_t side) {
     }
     for (size_t line_side = LEFT; line_side <= RIGHT; ++line_side)
         saved_lines_[line_side] = averageRecentLines(recent_lines_[line_side]);
+
+    if (saved_lines_[LEFT] && saved_lines_[RIGHT]) {
+        const auto left_center = (saved_lines_[LEFT]->first + saved_lines_[LEFT]->last) * 0.5;
+        const auto right_center = (saved_lines_[RIGHT]->first + saved_lines_[RIGHT]->last) * 0.5;
+        auto left_direction = saved_lines_[LEFT]->last - saved_lines_[LEFT]->first;
+        auto right_direction = saved_lines_[RIGHT]->last - saved_lines_[RIGHT]->first;
+        const double left_length = left_direction.length();
+        const double right_length = right_direction.length();
+
+        if (left_length > 1e-6 && right_length > 1e-6) {
+            left_direction /= left_length;
+            right_direction /= right_length;
+            if (left_direction.dot(right_direction) < 0.0) right_direction *= -1.0;
+
+            auto common_direction = left_direction + right_direction;
+            if (common_direction.length2() > 1e-12) {
+                common_direction.normalize();
+                const double half_length = 0.25 * (left_length + right_length);
+                saved_lines_[LEFT] =
+                    Line{left_center - common_direction * half_length,
+                         left_center + common_direction * half_length};
+                saved_lines_[RIGHT] =
+                    Line{right_center - common_direction * half_length,
+                         right_center + common_direction * half_length};
+            }
+        }
+    }
     collecting_lines_ = false;
     crosswalk_active_ = true;
     RCLCPP_INFO(get_logger(), "Collected %d paired lane-line frames; switching to preserved lane lines",

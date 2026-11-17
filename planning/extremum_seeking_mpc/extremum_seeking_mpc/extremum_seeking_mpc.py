@@ -68,6 +68,9 @@ class ExtremumSeekingMpc(Node):
         self.curvature_gain = get("curvature_gain")
         self.yaw_rate_gain = get("yaw_rate_gain")
         self.benefit_gain = get("benefit_gain")
+        self.command_curvature_point = get(
+            "command_curvature_point", int
+        )
         self.deceleration_angle_maximum = get(
             "velocity_control.deceleration_angle_maximum"
         )
@@ -86,6 +89,12 @@ class ExtremumSeekingMpc(Node):
             raise ValueError("control_period must be positive.")
         if self.buffer_size <= 0:
             raise ValueError("buffer_size must be positive.")
+        if self.command_curvature_point not in (1, 3):
+            raise ValueError("command_curvature_point must be either 1 or 3.")
+        if self.command_curvature_point > self.predict_horizon.size:
+            raise ValueError(
+                "command_curvature_point must not exceed the prediction horizon."
+            )
         if self.deceleration_angle_maximum < 0.0:
             raise ValueError(
                 "velocity_control.deceleration_angle_maximum must be non-negative."
@@ -329,13 +338,15 @@ class ExtremumSeekingMpc(Node):
         self, effective_curvatures: np.ndarray
     ) -> Tuple[float, float]:
 
-        first_curvature = float(effective_curvatures[0])
+        command_curvature = float(
+            effective_curvatures[self.command_curvature_point - 1]
+        )
 
         linear_velocity_reference = self.calculate_linear_velocity_reference(
-            first_curvature
+            command_curvature
         )
         yaw_rate_reference = self.calculate_yaw_rate_reference(
-            linear_velocity_reference, first_curvature
+            linear_velocity_reference, command_curvature
         ) * self.yaw_rate_gain
 
         return linear_velocity_reference, yaw_rate_reference
