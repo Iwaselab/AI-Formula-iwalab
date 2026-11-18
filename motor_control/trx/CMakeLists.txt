@@ -84,6 +84,7 @@ target_link_libraries(test_move
 
 ament_target_dependencies(test_move
   rclcpp
+  geometry_msgs
 )
 
 

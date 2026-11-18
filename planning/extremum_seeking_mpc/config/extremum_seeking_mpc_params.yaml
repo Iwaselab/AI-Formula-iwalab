@@ -11,9 +11,9 @@
     stop_bbox_width_threshold: 45.0
     min_velocity_scale: 0.2
     curvature_gain: 1.0
-    yaw_rate_gain: 20.0
+    yaw_rate_gain: 30.0
     benefit_gain: 3.0
-    command_curvature_point: 3 # 実車指令に使う曲率の点番号（1または3）
+    command_curvature_point: 1 # 実車指令に使う曲率の点番号（1または3）
     
     velocity_control:
       deceleration_angle_maximum: 0.267  # R=15m, v=2.0m/s, horizon[0]=2.0sで計算

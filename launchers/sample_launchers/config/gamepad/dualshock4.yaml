@@ -3,14 +3,14 @@
     axis_linear:
       x: 1  # L-Stick Vertical
     scale_linear:
-      x: 1.5 # [m/s]  
+      x: 2.0 # [m/s]  
     scale_linear_turbo:
-      x: 2.7 # [m/s]
+      x: 3.5 # [m/s]
 
     axis_angular:
       yaw: 3  # R-Stick Horizontal
     scale_angular:
-      yaw: 2.5  # [rad/s]
+      yaw: 6.0  # [rad/s]
 
     enable_button: 6        # L2
     enable_turbo_button: 4  # L1
