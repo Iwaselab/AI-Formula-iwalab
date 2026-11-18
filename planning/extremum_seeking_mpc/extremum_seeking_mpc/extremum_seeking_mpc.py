@@ -78,6 +78,10 @@ class ExtremumSeekingMpc(Node):
         self.base_footprint_frame_id = get("base_footprint_frame_id", str)
         self.control_period = get("control_period")
         self.buffer_size = get("buffer_size", int)
+        self.counter_steer_enabled = get("counter_steer_enabled", bool)
+        self.counter_steer_curvature_limit = get(
+            "controller_parameters.curvature_limit"
+        )
 
         if self.predict_horizon.size == 0:
             raise ValueError("horizon_times must contain at least one value.")
@@ -107,6 +111,10 @@ class ExtremumSeekingMpc(Node):
             )
         if self.yaw_rate_gain < 0.0:
             raise ValueError("yaw_rate_gain must be non-negative.")
+        if self.counter_steer_curvature_limit < 0.0:
+            raise ValueError(
+                "controller_parameters.curvature_limit must be non-negative."
+            )
 
         self.horizon_length = len(self.predict_horizon)
 
@@ -336,20 +344,69 @@ class ExtremumSeekingMpc(Node):
 
         return float(linear_velocity_reference * effective_curvature)
 
+    def _detect_unwinding(self, effective_curvatures: np.ndarray) -> bool:
+        """くの字（曲がり終わり）を検出する.
+
+        シーク点1、シーク点2、シーク点3が同方向であり，シーク点2の曲率が
+        前後のシーク点よりも大きい（局所ピーク）場合，曲がり終わりと判定する．
+
+        Args:
+            effective_curvatures: ゲイン適用済みの曲率列．
+
+        Returns:
+            曲がり終わりが検出された場合 True．
+        """
+        if self.horizon_length < 3:
+            return False
+        c1 = float(effective_curvatures[0])
+        c2 = float(effective_curvatures[1])
+        c3 = float(effective_curvatures[2])
+        is_same_direction = (
+            c1 * c2 > 0.0
+            and c2 * c3 > 0.0
+        )
+        is_local_peak = (
+            abs(c1) < abs(c2)
+            and abs(c3) < abs(c2)
+        )
+        return is_same_direction and is_local_peak
+
     def calculate_control_reference(
         self, effective_curvatures: np.ndarray
     ) -> Tuple[float, float]:
+        """MPC曲率から車両指令（線速度・ヨー角）を計算する.
 
+        線速度は常にMPC内部曲率から計算する．
+        ヨー角は通常時はMPC内部曲率から計算するが，
+        くの字（曲がり終わり）を検出中は逆ハンドルの最大値を出力する．
+        これにより，MPC内部状態（curvatures）は逆ハンドル出力の影響を受けない．
+        """
         command_curvature = float(
             effective_curvatures[self.command_curvature_point - 1]
         )
 
+        # 線速度は常にMPC曲率から計算（逆ハンドル中も変わらない）
         linear_velocity_reference = self.calculate_linear_velocity_reference(
             command_curvature
         )
-        yaw_rate_reference = self.calculate_yaw_rate_reference(
-            linear_velocity_reference, command_curvature
-        ) * self.yaw_rate_gain
+
+        # くの字（曲がり終わり）検出中はヨー角指令のみ逆ハンドル最大値で上書き
+        if self.counter_steer_enabled and self._detect_unwinding(
+            effective_curvatures
+        ):
+            c2 = float(effective_curvatures[1])
+            counter_curvature = (
+                -np.sign(c2)
+                * self.counter_steer_curvature_limit
+                * self.curvature_gain
+            )
+            yaw_rate_reference = self.calculate_yaw_rate_reference(
+                linear_velocity_reference, counter_curvature
+            ) * self.yaw_rate_gain
+        else:
+            yaw_rate_reference = self.calculate_yaw_rate_reference(
+                linear_velocity_reference, command_curvature
+            ) * self.yaw_rate_gain
 
         return linear_velocity_reference, yaw_rate_reference
 
