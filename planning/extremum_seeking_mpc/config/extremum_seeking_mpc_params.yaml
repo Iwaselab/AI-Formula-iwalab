@@ -4,17 +4,19 @@
     buffer_size: 10
 
     horizon_times: [2.0, 3.0, 4.0] #[s]
-    planned_speed: [1.0, 0.0] # linear_velocity[m/s], angular_velocity[rad/s]
+    planned_speed: [2.0, 0.0] # linear_velocity[m/s], angular_velocity[rad/s]
     stop_sign_class_id: 5
     go_sign_class_id: 6
     decel_bbox_width_start: 15.0
     stop_bbox_width_threshold: 45.0
     min_velocity_scale: 0.2
     curvature_gain: 1.0
-    yaw_rate_gain: 30.0
+    yaw_rate_gain: 1.0
     benefit_gain: 3.0
     command_curvature_point: 1 # 実車指令に使う曲率の点番号（1、2、または3）
     counter_steer_enabled: true # 切り終わりの逆ハンドルを有効化
+    counter_steer_curvature_limit: 0.03 # 逆ハンドル時の曲率上限 [rad/m]
+    counter_steer_min_peak_difference: 0.005 # 逆ハンドル判定に必要な曲率差 [rad/m]
     
     velocity_control:
       deceleration_angle_maximum: 0.267  # R=15m, v=2.0m/s, horizon[0]=2.0sで計算
