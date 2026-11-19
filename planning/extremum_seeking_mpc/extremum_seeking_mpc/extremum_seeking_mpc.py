@@ -79,8 +79,9 @@ class ExtremumSeekingMpc(Node):
         self.control_period = get("control_period")
         self.buffer_size = get("buffer_size", int)
         self.counter_steer_enabled = get("counter_steer_enabled", bool)
-        self.counter_steer_curvature_limit = get(
-            "controller_parameters.curvature_limit"
+        self.counter_steer_curvature_limit = get("counter_steer_curvature_limit")
+        self.counter_steer_min_peak_difference = get(
+            "counter_steer_min_peak_difference"
         )
 
         if self.predict_horizon.size == 0:
@@ -113,7 +114,11 @@ class ExtremumSeekingMpc(Node):
             raise ValueError("yaw_rate_gain must be non-negative.")
         if self.counter_steer_curvature_limit < 0.0:
             raise ValueError(
-                "controller_parameters.curvature_limit must be non-negative."
+                "counter_steer_curvature_limit must be non-negative."
+            )
+        if self.counter_steer_min_peak_difference < 0.0:
+            raise ValueError(
+                "counter_steer_min_peak_difference must be non-negative."
             )
 
         self.horizon_length = len(self.predict_horizon)
@@ -366,8 +371,8 @@ class ExtremumSeekingMpc(Node):
             and c2 * c3 > 0.0
         )
         is_local_peak = (
-            abs(c1) < abs(c2)
-            and abs(c3) < abs(c2)
+            abs(c2) - abs(c1) >= self.counter_steer_min_peak_difference
+            and abs(c2) - abs(c3) >= self.counter_steer_min_peak_difference
         )
         return is_same_direction and is_local_peak
 
@@ -378,7 +383,7 @@ class ExtremumSeekingMpc(Node):
 
         線速度は常にMPC内部曲率から計算する．
         ヨー角は通常時はMPC内部曲率から計算するが，
-        くの字（曲がり終わり）を検出中は逆ハンドルの最大値を出力する．
+        くの字（曲がり終わり）を検出中は設定された上限値の逆ハンドルを出力する．
         これにより，MPC内部状態（curvatures）は逆ハンドル出力の影響を受けない．
         """
         command_curvature = float(
@@ -390,7 +395,7 @@ class ExtremumSeekingMpc(Node):
             command_curvature
         )
 
-        # くの字（曲がり終わり）検出中はヨー角指令のみ逆ハンドル最大値で上書き
+        # くの字（曲がり終わり）検出中は設定された上限値で逆ハンドル
         if self.counter_steer_enabled and self._detect_unwinding(
             effective_curvatures
         ):

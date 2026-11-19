@@ -15,6 +15,8 @@
     benefit_gain: 3.0
     command_curvature_point: 1 # 実車指令に使う曲率の点番号（1、2、または3）
     counter_steer_enabled: true # 切り終わりの逆ハンドルを有効化
+    counter_steer_curvature_limit: 0.03 # 逆ハンドル時の曲率上限 [rad/m]
+    counter_steer_min_peak_difference: 0.005 # 逆ハンドル判定に必要な曲率差 [rad/m]
     
     velocity_control:
       deceleration_angle_maximum: 0.267  # R=15m, v=2.0m/s, horizon[0]=2.0sで計算
