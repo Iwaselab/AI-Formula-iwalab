@@ -6,6 +6,7 @@ import numpy as np
 import rclpy
 from geometry_msgs.msg import TransformStamped, Twist
 from rclpy.node import Node
+from std_msgs.msg import Float32
 from tf2_ros import TransformBroadcaster
 
 from aiformula_interfaces.msg import Rect, RectMultiArray
@@ -83,6 +84,33 @@ class ExtremumSeekingMpc(Node):
         self.counter_steer_min_peak_difference = get(
             "counter_steer_min_peak_difference"
         )
+        self.rear_angle_feedback_enabled = get(
+            "rear_angle_feedback.enabled", bool
+        )
+        self.rear_angle_topic = get(
+            "rear_angle_feedback.topic", str
+        )
+        self.rear_axle_distance_m = get(
+            "rear_angle_feedback.axle_distance_m"
+        )
+        self.rear_angle_sign = get(
+            "rear_angle_feedback.angle_sign"
+        )
+        self.rear_angle_offset_rad = get(
+            "rear_angle_feedback.angle_offset_rad"
+        )
+        self.rear_angle_gain = get(
+            "rear_angle_feedback.gain"
+        )
+        self.rear_angle_deadband_rad = get(
+            "rear_angle_feedback.deadband_rad"
+        )
+        self.rear_angle_max_correction_rad_s = get(
+            "rear_angle_feedback.max_correction_rad_s"
+        )
+        self.rear_angle_timeout_sec = get(
+            "rear_angle_feedback.timeout_sec"
+        )
 
         if self.predict_horizon.size == 0:
             raise ValueError("horizon_times must contain at least one value.")
@@ -120,6 +148,45 @@ class ExtremumSeekingMpc(Node):
             raise ValueError(
                 "counter_steer_min_peak_difference must be non-negative."
             )
+        rear_angle_values = (
+            self.rear_axle_distance_m,
+            self.rear_angle_sign,
+            self.rear_angle_offset_rad,
+            self.rear_angle_gain,
+            self.rear_angle_deadband_rad,
+            self.rear_angle_max_correction_rad_s,
+            self.rear_angle_timeout_sec,
+        )
+        if not np.all(np.isfinite(np.asarray(rear_angle_values, dtype=float))):
+            raise ValueError("rear_angle_feedback values must be finite.")
+        if self.rear_angle_feedback_enabled:
+            if self.rear_axle_distance_m <= 0.0:
+                raise ValueError(
+                    "rear_angle_feedback.axle_distance_m must be positive "
+                    "when rear angle feedback is enabled."
+                )
+            if self.rear_angle_sign not in (-1.0, 1.0):
+                raise ValueError(
+                    "rear_angle_feedback.angle_sign must be 1.0 or -1.0."
+                )
+            if self.rear_angle_gain < 0.0:
+                raise ValueError(
+                    "rear_angle_feedback.gain must be non-negative."
+                )
+            if self.rear_angle_deadband_rad < 0.0:
+                raise ValueError(
+                    "rear_angle_feedback.deadband_rad must be non-negative."
+                )
+            if self.rear_angle_max_correction_rad_s <= 0.0:
+                raise ValueError(
+                    "rear_angle_feedback.max_correction_rad_s must be positive "
+                    "when rear angle feedback is enabled."
+                )
+            if self.rear_angle_timeout_sec <= 0.0:
+                raise ValueError(
+                    "rear_angle_feedback.timeout_sec must be positive "
+                    "when rear angle feedback is enabled."
+                )
 
         self.horizon_length = len(self.predict_horizon)
 
@@ -157,6 +224,32 @@ class ExtremumSeekingMpc(Node):
             self._bbox_callback,
             self.buffer_size,
         )
+        self._rear_angle_received = False
+        self._rear_angle_raw = 0.0
+        self._rear_angle_receive_time_ns = None
+        self._rear_angle_last_callback_time_ns = None
+        self._rear_angle_clock_rollback = False
+        self._rear_angle_sub = self.create_subscription(
+            Float32,
+            self.rear_angle_topic,
+            self._rear_angle_callback,
+            self.buffer_size,
+        )
+
+    def _rear_angle_callback(self, msg: Float32) -> None:
+        now_ns = self.get_clock().now().nanoseconds
+        if (
+            self._rear_angle_last_callback_time_ns is not None
+            and now_ns < self._rear_angle_last_callback_time_ns
+        ):
+            self._rear_angle_clock_rollback = True
+        else:
+            self._rear_angle_clock_rollback = False
+
+        self._rear_angle_last_callback_time_ns = now_ns
+        self._rear_angle_received = True
+        self._rear_angle_receive_time_ns = now_ns
+        self._rear_angle_raw = float(msg.data)
 
     def _init_traffic_sign_parameters(self) -> None:
         self._stop_sign_class_id = int(get_ros_parameter(self, 'stop_sign_class_id'))
@@ -389,6 +482,7 @@ class ExtremumSeekingMpc(Node):
         command_curvature = float(
             effective_curvatures[self.command_curvature_point - 1]
         )
+        counter_steer_active = False
 
         # 線速度は常にMPC曲率から計算（逆ハンドル中も変わらない）
         linear_velocity_reference = self.calculate_linear_velocity_reference(
@@ -399,6 +493,7 @@ class ExtremumSeekingMpc(Node):
         if self.counter_steer_enabled and self._detect_unwinding(
             effective_curvatures
         ):
+            counter_steer_active = True
             c2 = float(effective_curvatures[1])
             counter_curvature = (
                 -np.sign(c2)
@@ -413,7 +508,102 @@ class ExtremumSeekingMpc(Node):
                 linear_velocity_reference, command_curvature
             ) * self.yaw_rate_gain
 
+        correction, rear_debug = self._calculate_rear_angle_correction(
+            command_curvature
+        )
+        rear_debug["counter_steer_active"] = counter_steer_active
+        rear_debug["effective_curvatures"] = np.asarray(
+            effective_curvatures, dtype=float
+        ).copy()
+        rear_debug["selected_curvature"] = command_curvature
+        rear_debug["r_existing_ff"] = float(yaw_rate_reference)
+        rear_debug["r_out"] = float(yaw_rate_reference + correction)
+        yaw_rate_reference = float(yaw_rate_reference + correction)
+
+        self.get_logger().debug(
+            "rear_angle_feedback "
+            f"curvatures={rear_debug['effective_curvatures'].tolist()} "
+            f"selected_curvature={rear_debug['selected_curvature']:.6f} "
+            f"counter_steer_active={counter_steer_active} "
+            f"raw_rear_angle_rad={rear_debug['raw_rear_angle_rad']:.6f} "
+            f"measured_rear_angle_rad={rear_debug['measured_rear_angle_rad']:.6f} "
+            f"target_rear_angle_rad={rear_debug['target_rear_angle_rad']:.6f} "
+            f"error_rad={rear_debug['error_rad']:.6f} "
+            f"correction_rad_s={correction:.6f} "
+            f"r_existing_ff_rad_s={rear_debug['r_existing_ff']:.6f} "
+            f"r_out_rad_s={rear_debug['r_out']:.6f} "
+            f"value_valid={rear_debug['value_valid']} "
+            f"age_sec={rear_debug['age_sec']:.6f}"
+        )
+
         return linear_velocity_reference, yaw_rate_reference
+
+    def _calculate_rear_angle_correction(
+        self, kappa_ref: float
+    ) -> Tuple[float, dict]:
+        debug = {
+            "raw_rear_angle_rad": float("nan"),
+            "measured_rear_angle_rad": float("nan"),
+            "target_rear_angle_rad": float("nan"),
+            "error_rad": float("nan"),
+            "value_valid": False,
+            "age_sec": float("inf"),
+        }
+
+        if (
+            not self.rear_angle_feedback_enabled
+            or self.rear_angle_gain == 0.0
+        ):
+            return 0.0, debug
+
+        now_ns = self.get_clock().now().nanoseconds
+        if not self._rear_angle_received:
+            return 0.0, debug
+
+        if self._rear_angle_clock_rollback:
+            return 0.0, debug
+
+        raw_rear_angle = float(self._rear_angle_raw)
+        debug["raw_rear_angle_rad"] = raw_rear_angle
+        age_sec = (
+            now_ns - self._rear_angle_receive_time_ns
+        ) / 1_000_000_000.0
+        debug["age_sec"] = age_sec
+
+        if (
+            not np.isfinite(raw_rear_angle)
+            or not np.isfinite(kappa_ref)
+            or age_sec < 0.0
+            or age_sec > self.rear_angle_timeout_sec
+        ):
+            return 0.0, debug
+
+        delta_ref = -float(np.arctan(
+            self.rear_axle_distance_m * kappa_ref
+        ))
+        delta_measured = float(
+            self.rear_angle_sign
+            * (raw_rear_angle - self.rear_angle_offset_rad)
+        )
+        error = delta_measured - delta_ref
+        if not np.isfinite(delta_ref) or not np.isfinite(delta_measured):
+            return 0.0, debug
+
+        deadband_error = float(
+            np.sign(error)
+            * max(abs(error) - self.rear_angle_deadband_rad, 0.0)
+        )
+        correction = float(np.clip(
+            self.rear_angle_gain * deadband_error,
+            -self.rear_angle_max_correction_rad_s,
+            self.rear_angle_max_correction_rad_s,
+        ))
+
+        debug["measured_rear_angle_rad"] = delta_measured
+        debug["target_rear_angle_rad"] = delta_ref
+        debug["error_rad"] = error
+        debug["value_valid"] = True
+        return correction, debug
 
     def publish_cmd_vel(
         self, vehicle_linear_velocity: float, yaw_rate: float

@@ -3,7 +3,7 @@
     control_period: 0.01 #[s]
     buffer_size: 10
 
-    horizon_times: [2.0, 3.0, 4.0] #[s]
+    horizon_times: [2.0, 4.0, 6.0] #[s]
     planned_speed: [2.0, 0.0] # linear_velocity[m/s], angular_velocity[rad/s]
     stop_sign_class_id: 5
     go_sign_class_id: 6
@@ -17,6 +17,16 @@
     counter_steer_enabled: true # 切り終わりの逆ハンドルを有効化
     counter_steer_curvature_limit: 0.03 # 逆ハンドル時の曲率上限 [rad/m]
     counter_steer_min_peak_difference: 0.005 # 逆ハンドル判定に必要な曲率差 [rad/m]
+    rear_angle_feedback:
+      enabled: false
+      topic: "/aiformula_sensing/rear_potentiometer/yaw"
+      axle_distance_m: 0.0       # 前輪軸中央から後輪首振り軸までの距離 [m]
+      angle_sign: -1.0           # 後輪の左向きを正に揚げるための符号
+      angle_offset_rad: 0.0      # 後輪の直進原点 [rad]
+      gain: 0.0                  # 後輪角比例ゲイン [(rad/s)/rad]
+      deadband_rad: 0.01         # 後輪角誤差の不感帯 [rad]
+      max_correction_rad_s: 0.05 # 補正ヨーレート上限 [rad/s]
+      timeout_sec: 0.5           # 後輪角値の有効期限 [s]
     
     velocity_control:
       deceleration_angle_maximum: 0.267  # R=15m, v=2.0m/s, horizon[0]=2.0sで計算
