@@ -33,9 +33,13 @@ class PathOptimizer:
             A=lowpass_A, B=lowpass_B, C=lowpass_C
         )
 
+        horizon_times = get_ros_parameter(node, "horizon_times")
+        if not isinstance(horizon_times, (list, tuple)) or len(horizon_times) == 0:
+            raise ValueError("horizon_times must contain at least one value.")
+
         self.extremum_seeking_controllers = [
             ExtremumSeekingController(mpc_params, lowpass_params, control_period)
-            for _ in range(3)
+            for _ in range(len(horizon_times))
         ]
 
         self.backpropagation = BackPropagation(node)
@@ -48,21 +52,20 @@ class PathOptimizer:
             controller.apply_risk_moving_average(r) for controller, r in zip(controllers, risk)
         ]
 
-        # Calculate backpropagation values
-        backpropagation_values = {
-            "21": self.backpropagation.apply_backpropagation(risk_moving_averages[1], risk_moving_averages[2]),
-            "20": self.backpropagation.apply_backpropagation(risk_moving_averages[0], risk_moving_averages[2]),
-            "10": self.backpropagation.apply_backpropagation(risk_moving_averages[0], risk_moving_averages[1])
-        }
-
-        # Optimize control inputs
-        curvatures = [
-            controllers[0].optimize_input(
-                risk_moving_averages[0], backpropagation_values["20"] + backpropagation_values["10"]),
-            controllers[1].optimize_input(
-                risk_moving_averages[1], backpropagation_values["21"]),
-            controllers[2].optimize_input(
-                risk_moving_averages[2], 0.0)
-        ]
+        # Calculate backpropagation values for every horizon point.
+        curvatures = []
+        for controller_idx, (controller, risk_moving_average) in enumerate(
+            zip(controllers, risk_moving_averages)
+        ):
+            backpropagation_value = sum(
+                self.backpropagation.apply_backpropagation(
+                    risk_moving_average,
+                    risk_moving_averages[backward_idx],
+                )
+                for backward_idx in range(controller_idx + 1, len(risk_moving_averages))
+            )
+            curvatures.append(
+                controller.optimize_input(risk_moving_average, backpropagation_value)
+            )
 
         return np.array(curvatures)

@@ -23,6 +23,7 @@ def mock_node():
         "road_identification.road_parameter_limit": 1.0,
         "road_benefit_function.scale": 1.0,
         "road_benefit_function.covariance": 0.5,
+        "road_benefit_function.smoothing_eps": 0.5,
     }
     node.get_parameter.side_effect = lambda name: MagicMock(value=params[name])
     return node
@@ -76,4 +77,60 @@ def test_compute_road_risk_returns_y_hats_array(mock_node):
     assert risks.shape == (2, 5)
     assert isinstance(y_hats, np.ndarray)
     assert len(y_hats) == 2
+
+
+def test_line_identification_is_independent_per_side(mock_node):
+    calculator = RoadRiskCalculator(mock_node, buffer_size=10)
+    x = np.linspace(0.0, 10.0, 20)
+    left_points = np.column_stack([x, np.full_like(x, 1.5)])
+    right_points = np.column_stack([x, np.full_like(x, -1.5)])
+
+    len_l, off_l, thetas_l = calculator.line_identification(left_points, Side.LEFT)
+    calculator.point_length[Side.LEFT] = len_l
+    calculator.road_offset[Side.LEFT] = off_l
+    calculator.road_thetas[Side.LEFT] = thetas_l
+
+    len_r, off_r, thetas_r = calculator.line_identification(right_points, Side.RIGHT)
+    calculator.point_length[Side.RIGHT] = len_r
+    calculator.road_offset[Side.RIGHT] = off_r
+    calculator.road_thetas[Side.RIGHT] = thetas_r
+
+    # Re-identifying right side must not corrupt left side's dthetas/thetas
+    len_l2, off_l2, thetas_l2 = calculator.line_identification(left_points, Side.LEFT)
+    y_hat_l = calculator.estimate_yhat(5.0, len_l2, off_l2, thetas_l2)
+    y_hat_r = calculator.estimate_yhat(5.0, len_r, off_r, thetas_r)
+
+    assert y_hat_l > 0.0
+    assert y_hat_r < 0.0
+
+
+def test_compute_road_risk_clamps_out_of_range_seek_x(mock_node):
+    calculator = RoadRiskCalculator(mock_node, buffer_size=10)
+    x = np.linspace(0.0, 5.0, 20)
+    left_points = np.column_stack([x, np.full_like(x, 1.5)])
+    len_l, off_l, thetas_l = calculator.line_identification(left_points, Side.LEFT)
+    calculator.point_length[Side.LEFT] = len_l
+    calculator.road_offset[Side.LEFT] = off_l
+    calculator.road_thetas[Side.LEFT] = thetas_l
+
+    # Second horizon point (x=8.0) is beyond detected lane length (5.0)
+    seek_positions = np.array([
+        [[3.0, 3.0, 3.0, 3.0, 3.0], [-0.2, -0.1, 0.0, 0.1, 0.2]],
+        [[8.0, 8.0, 8.0, 8.0, 8.0], [-0.2, -0.1, 0.0, 0.1, 0.2]],
+    ])
+
+    risks, y_hats = calculator.compute_road_risk(seek_positions, Side.LEFT)
+    assert y_hats[1] > 0.0
+    assert np.any(risks[1] != 0.0)
+
+
+def test_get_road_risk_value_maintains_gradient_outside_road(mock_node):
+    calculator = RoadRiskCalculator(mock_node, buffer_size=10)
+    y_hat_left = 1.5
+    # Far outside left white line (y = 5.0 and 5.1)
+    far_outside_y = np.array([5.0, 5.1])
+    risks = calculator.get_road_risk_value(far_outside_y, y_hat_left, Side.LEFT)
+    gradient = (risks[1] - risks[0]) / 0.1
+    assert gradient > 0.4
+
 

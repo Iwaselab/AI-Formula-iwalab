@@ -94,13 +94,10 @@ class ExtremumSeekingMpc(Node):
             raise ValueError("control_period must be positive.")
         if self.buffer_size <= 0:
             raise ValueError("buffer_size must be positive.")
-        if self.command_curvature_point not in (1, 2, 3):
+        if not 1 <= self.command_curvature_point <= self.predict_horizon.size:
             raise ValueError(
-                "command_curvature_point must be 1, 2, or 3."
-            )
-        if self.command_curvature_point > self.predict_horizon.size:
-            raise ValueError(
-                "command_curvature_point must not exceed the prediction horizon."
+                "command_curvature_point must be between 1 and "
+                "the number of horizon_times."
             )
         if self.deceleration_angle_maximum < 0.0:
             raise ValueError(

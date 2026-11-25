@@ -1,9 +1,9 @@
 /**:
   ros__parameters:
     road_risk_potential:
-      left_gradient: 0.2
-      right_gradient: 0.2
-      margin: 1.6 # 白線間距離3.5m: (3.5/2 - 0.2安全余裕) = 1.55m
+      left_gradient: 1.0
+      right_gradient: 1.0
+      margin: 0.75 # 白線間距離3.5m: (3.5/2 - 0.2安全余裕) = 1.55m
       offset: 1.7 # margin + 0.1m
       gain: 3.0
     
@@ -20,4 +20,5 @@
     
     road_benefit_function:
       scale: 1.0
-      covariance: 1.0
+      covariance: 0.5 # 道路中心に狭く集中させる報酬幅 [m]
+      smoothing_eps: 0.25

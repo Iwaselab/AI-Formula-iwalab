@@ -38,11 +38,11 @@ def test_dynamic_state_initialization():
 
 
 def test_pose_predictor_initialization(mock_node):
-    horizon_times = [0.5, 1.0, 1.5]
-    seek_y_positions = np.zeros((3, 5))
+    horizon_times = [1.0, 2.0, 3.0, 4.0, 5.0]
+    seek_y_positions = np.zeros((5, 5))
     predictor = PosePredictor(mock_node, horizon_times, seek_y_positions, buffer_size=10)
 
-    assert predictor.horizon_length == 3
+    assert predictor.horizon_length == 5
     assert predictor.planned_speed == 5.0
 
 

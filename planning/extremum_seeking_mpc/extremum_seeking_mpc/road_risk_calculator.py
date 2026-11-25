@@ -46,8 +46,7 @@ class RoadRiskCalculator:
         self.identification_gain_matrix = self.identification_gain * np.eye(self.num_weight_function_coefficients)
         self.forget_vector = np.array(self.forget_vector)
         self.theta_base = np.zeros(self.num_weight_function_coefficients)
-        self.thetas = np.zeros((self.num_weight_function, self.num_weight_function_coefficients))
-        self.dthetas = np.zeros((self.num_weight_function, self.num_weight_function_coefficients))
+        self.road_dthetas = np.zeros((Side.NUM_SIDES, self.num_weight_function, self.num_weight_function_coefficients))
 
     def init_parameters(self, node: Node) -> None:
         self.road_risk_left_gradient = get_ros_parameter(
@@ -78,6 +77,8 @@ class RoadRiskCalculator:
             node, "road_benefit_function.scale")
         self.benefit_covariance = get_ros_parameter(
             node, "road_benefit_function.covariance")
+        self.benefit_smoothing_eps = get_ros_parameter(
+            node, "road_benefit_function.smoothing_eps")
 
     def init_connections(self, node: Node, buffer_size: int) -> None:
         self.left_lane_line_sub = node.create_subscription(
@@ -98,14 +99,20 @@ class RoadRiskCalculator:
             return
 
         with self.lock:
-            self.point_length[side], self.road_offset[side], self.road_thetas[side] = self.line_identification(lane_points)
+            self.point_length[side], self.road_offset[side], self.road_thetas[side] = (
+                self.line_identification(lane_points, side)
+            )
 
-    def line_identification(self, lane_points: np.ndarray) -> Tuple[float, float, np.ndarray]:
+    def line_identification(
+        self, lane_points: np.ndarray, side: Side = Side.LEFT
+    ) -> Tuple[float, float, np.ndarray]:
         x_coords, y_coords = lane_points[:, 0], lane_points[:, 1]
         x_min = min(x_coords)
         x_range = max(x_coords) - x_min
+        thetas = self.road_thetas[side].copy()
+        dthetas = self.road_dthetas[side].copy()
         if x_range <= 1e-6:
-            return x_range, x_min, self.thetas
+            return x_range, x_min, thetas
 
         normalized_x = (x_coords - x_min) / x_range
 
@@ -123,12 +130,13 @@ class RoadRiskCalculator:
             zp = x_vector @ self.identification_gain_matrix
             adaptive_gain_denominator = 1. + np.dot(zp, x_vector)
             adaptive_gain = adaptive_gain_numerator / adaptive_gain_denominator
-            weighted_y_hats = self.thetas @ x_vector * weights
+            weighted_y_hats = thetas @ x_vector * weights
             y_error = y_coord - weighted_y_hats.sum()
             weighted_y_errors = np.outer((y_error * weights), adaptive_gain)
-            self.thetas, self.dthetas = self.identify_function_coefficients(weighted_y_errors, self.dthetas)
+            thetas, dthetas = self.identify_function_coefficients(weighted_y_errors, dthetas)
 
-        return x_range, x_min, self.thetas
+        self.road_dthetas[side] = dthetas
+        return x_range, x_min, thetas
 
     def identify_function_coefficients(self, ddtheta: np.ndarray, dtheta_memory: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         dtheta = ddtheta + (dtheta_memory * self.forget_vector)
@@ -171,11 +179,12 @@ class RoadRiskCalculator:
             seek_y_positions = seek_position[1]
             risk = np.zeros(num_seek_position)
 
-            if not road_offset < seek_x < road_offset + point_length:
+            if point_length <= 1e-6:
                 risks[idx] = risk
                 continue
 
-            y_hat = self.estimate_yhat(seek_x, point_length, road_offset, road_thetas)
+            clamped_seek_x = float(np.clip(seek_x, road_offset, road_offset + point_length))
+            y_hat = self.estimate_yhat(clamped_seek_x, point_length, road_offset, road_thetas)
             y_hats[idx] = y_hat
 
             risk = self.get_road_risk_value(seek_y_positions, y_hat, side)
@@ -188,21 +197,29 @@ class RoadRiskCalculator:
     ) -> np.ndarray:
         risk = np.zeros(len(seek_y_positions))
         for idx, seek_y_position in enumerate(seek_y_positions):
-            sigma = seek_y_position - y_hat
+            sigma = seek_y_position - y_hat  # y_hat は白線の y 位置
             if side == Side.RIGHT:
+                # 右白線(y_hat < 0): 白線の内側 margin の位置で最も急に立ち上がる
+                # 道路外で勾配が飽和・消失しないよう線形項を加える
+                excess = max(0.0, -(sigma - self.road_risk_margin))
                 risk[idx] = self.road_risk_gain * (
                     -np.arctan(
                         self.road_risk_right_gradient
-                        * (sigma + self.road_risk_margin)
+                        * (sigma - self.road_risk_margin)
                     )
+                    + 0.5 * self.road_risk_right_gradient * excess
                     + self.road_risk_offset
                 )
             elif side == Side.LEFT:
+                # 左白線(y_hat > 0): 白線の内側 margin の位置で最も急に立ち上がる
+                # 道路外で勾配が飽和・消失しないよう線形項を加える
+                excess = max(0.0, sigma + self.road_risk_margin)
                 risk[idx] = self.road_risk_gain * (
                     np.arctan(
                         self.road_risk_left_gradient
-                        * (sigma - self.road_risk_margin)
+                        * (sigma + self.road_risk_margin)
                     )
+                    + 0.5 * self.road_risk_left_gradient * excess
                     + self.road_risk_offset
                 )
         return risk
@@ -238,9 +255,13 @@ class RoadRiskCalculator:
         for idx, seek_position in enumerate(seek_positions):
             seek_y_positions = np.asarray(seek_position[1])
 
-            pdf_values = laplace.pdf(
-                seek_y_positions, loc=y_hat_center[idx], scale=benefit_scale_b
+            # Laplace 分布の |x - μ| を sqrt(x² + eps²) に置き換えて、
+            # 中心付近の勾配を滑らかにする
+            smooth_abs = np.sqrt(
+                (seek_y_positions - y_hat_center[idx]) ** 2
+                + self.benefit_smoothing_eps ** 2
             )
+            pdf_values = np.exp(-smooth_abs / benefit_scale_b) / (2.0 * benefit_scale_b)
             benefits[idx] = scale * pdf_values
 
         return benefits
