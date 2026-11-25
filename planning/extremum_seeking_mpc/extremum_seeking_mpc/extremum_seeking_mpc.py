@@ -1,20 +1,22 @@
-import threading
 from enum import Enum, auto
-from typing import Optional, Tuple
+from functools import partial
+import threading
+from typing import List, Optional
 
 import numpy as np
 import rclpy
 from geometry_msgs.msg import TransformStamped, Twist
+from nav_msgs.msg import Odometry
 from rclpy.node import Node
+from sensor_msgs.msg import PointCloud2
+import sensor_msgs_py.point_cloud2 as pc2
 from tf2_ros import TransformBroadcaster
 
-from aiformula_interfaces.msg import Rect, RectMultiArray
+from aiformula_interfaces.msg import ObjectInfo, ObjectInfoMultiArray, Rect, RectMultiArray
 from common_python.get_ros_parameter import get_ros_parameter
-from .object_risk_calculator import ObjectRiskCalculator
-from .path_optimizer import PathOptimizer
-from .pose_predictor import PosePredictor
-from .road_risk_calculator import RoadRiskCalculator
-from .util import Side, Vector2, calculate_decelerated_velocity, first_scalar
+from .lane_center_estimator import LaneCenterEstimator
+from .sampling_planner import SamplingPlanner, SamplingPlannerConfig
+from .util import Side, calculate_decelerated_velocity, first_scalar
 
 
 class State(Enum):
@@ -24,8 +26,9 @@ class State(Enum):
 
 
 class ExtremumSeekingMpc(Node):
+    """Sampling-based MPC node using constant-curvature arc rollouts."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__('extremum_seeking_mpc')
 
         self._lock = threading.Lock()
@@ -37,8 +40,10 @@ class ExtremumSeekingMpc(Node):
 
         self.tf_broadcaster = TransformBroadcaster(self)
 
-        self.curvatures = np.zeros(self.horizon_length, dtype=float)
+        self.prev_curvature = 0.0
+        self.has_received_odometry = False
         self.waiting_for_odometry_logged = False
+        self._latest_objects: List[ObjectInfo] = []
 
         self.timer = self.create_timer(
             self.control_period,
@@ -46,106 +51,69 @@ class ExtremumSeekingMpc(Node):
         )
 
         self.get_logger().info(
-            "ExtremumSeekingMpc started with kinematic "
-            "velocity-command pose prediction."
-        )
-        self.get_logger().info(
-            f"planned_speed = {self.ego_target_velocity:.6f} m/s"
+            f"Sampling MPC started: planned_speed={self.ego_target_velocity:.3f} m/s, "
+            f"candidates={self.planner.config.num_candidates}, "
+            f"curvature_limit={self.planner.config.curvature_limit:.4f} rad/m"
         )
 
     def init_parameters(self) -> None:
-
-        def get(name, cast=float):
+        def get(name: str, cast=float):
             return cast(get_ros_parameter(self, name))
 
         self.ego_target_velocity = first_scalar(
             get_ros_parameter(self, "planned_speed"), "planned_speed"
         )
-        self.predict_horizon = np.asarray(
-            get_ros_parameter(self, "horizon_times"), dtype=float
-        ).reshape(-1)
-
-        self.curvature_gain = get("curvature_gain")
+        self.control_period = get("control_period")
+        self.buffer_size = get("buffer_size", int)
+        self.base_footprint_frame_id = get("base_footprint_frame_id", str)
         self.yaw_rate_gain = get("yaw_rate_gain")
-        self.benefit_gain = get("benefit_gain")
-        self.command_curvature_point = get(
-            "command_curvature_point", int
-        )
+
         self.deceleration_angle_maximum = get(
             "velocity_control.deceleration_angle_maximum"
         )
         self.deceleration_gain = get("velocity_control.deceleration_gain")
-        self.base_footprint_frame_id = get("base_footprint_frame_id", str)
-        self.control_period = get("control_period")
-        self.buffer_size = get("buffer_size", int)
-        self.counter_steer_enabled = get("counter_steer_enabled", bool)
-        self.counter_steer_curvature_limit = get("counter_steer_curvature_limit")
-        self.counter_steer_min_peak_difference = get(
-            "counter_steer_min_peak_difference"
+        self.deceleration_dt = get("velocity_control.eval_dt")
+
+        self.lane_max_point_length = get("lane.max_point_length")
+        self.lane_width = get("lane.width")
+        self.lane_min_points_for_quadratic = get("lane.min_points_for_quadratic", int)
+        self.lane_min_x_range_for_quadratic = get("lane.min_x_range_for_quadratic")
+
+        self.planner_config = SamplingPlannerConfig(
+            curvature_limit=get("sampling.curvature_limit"),
+            num_candidates=get("sampling.num_candidates", int),
+            horizon_min_distance=get("sampling.horizon_min_distance"),
+            horizon_max_distance=get("sampling.horizon_max_distance"),
+            num_horizon_points=get("sampling.num_horizon_points", int),
+            min_valid_points=get("sampling.min_valid_points", int),
+            center_weight=get("sampling.center_weight"),
+            boundary_weight=get("sampling.boundary_weight"),
+            road_margin=get("sampling.road_margin"),
+            smoothness_weight=get("sampling.smoothness_weight"),
+            object_variance_x=get("object_risk_potential.variance_x"),
+            object_variance_y=get("object_risk_potential.variance_y"),
+            object_gain=get("object_risk_potential.gain"),
+            obstacle_class_ids=tuple(
+                int(c)
+                for c in get_ros_parameter(self, "object_risk_potential.obstacle_class_ids")
+            ),
         )
 
-        if self.predict_horizon.size == 0:
-            raise ValueError("horizon_times must contain at least one value.")
-        if np.any(self.predict_horizon <= 0.0):
-            raise ValueError("All horizon_times must be positive.")
-        if np.any(np.diff(self.predict_horizon) <= 0.0):
-            raise ValueError("horizon_times must be strictly increasing.")
         if self.control_period <= 0.0:
             raise ValueError("control_period must be positive.")
         if self.buffer_size <= 0:
             raise ValueError("buffer_size must be positive.")
-        if self.command_curvature_point not in (1, 2, 3):
-            raise ValueError(
-                "command_curvature_point must be 1, 2, or 3."
-            )
-        if self.command_curvature_point > self.predict_horizon.size:
-            raise ValueError(
-                "command_curvature_point must not exceed the prediction horizon."
-            )
-        if self.deceleration_angle_maximum < 0.0:
-            raise ValueError(
-                "velocity_control.deceleration_angle_maximum must be non-negative."
-            )
-        if self.deceleration_gain < 0.0:
-            raise ValueError(
-                "velocity_control.deceleration_gain must be non-negative."
-            )
         if self.yaw_rate_gain < 0.0:
             raise ValueError("yaw_rate_gain must be non-negative.")
-        if self.counter_steer_curvature_limit < 0.0:
-            raise ValueError(
-                "counter_steer_curvature_limit must be non-negative."
-            )
-        if self.counter_steer_min_peak_difference < 0.0:
-            raise ValueError(
-                "counter_steer_min_peak_difference must be non-negative."
-            )
-
-        self.horizon_length = len(self.predict_horizon)
 
     def init_members(self) -> None:
-
-        self.object_risk_calculator = ObjectRiskCalculator(self, self.buffer_size)
-        self.road_risk_calculator = RoadRiskCalculator(self, self.buffer_size)
-        self.path_optimizer = PathOptimizer(self, self.control_period)
-
-        init_seek_points_array = np.array(
-            [c.seek_points for c in self.path_optimizer.extremum_seeking_controllers],
-            dtype=float,
+        self.lane_estimator = LaneCenterEstimator(
+            max_point_length=self.lane_max_point_length,
+            lane_width=self.lane_width,
+            min_points_for_quadratic=self.lane_min_points_for_quadratic,
+            min_x_range_for_quadratic=self.lane_min_x_range_for_quadratic,
         )
-
-        if len(init_seek_points_array) != self.horizon_length:
-            raise ValueError(
-                "The number of PathOptimizer controllers "
-                "must match the number of horizon_times."
-            )
-
-        self.pose_predictor = PosePredictor(
-            self,
-            self.predict_horizon.tolist(),
-            init_seek_points_array,
-            self.buffer_size,
-        )
+        self.planner = SamplingPlanner(self.planner_config)
 
     def init_connections(self) -> None:
         self.twist_pub = self.create_publisher(
@@ -157,6 +125,40 @@ class ExtremumSeekingMpc(Node):
             self._bbox_callback,
             self.buffer_size,
         )
+        self._left_lane_sub = self.create_subscription(
+            PointCloud2,
+            'sub_road_l',
+            partial(self._lane_callback, side=Side.LEFT),
+            self.buffer_size,
+        )
+        self._right_lane_sub = self.create_subscription(
+            PointCloud2,
+            'sub_road_r',
+            partial(self._lane_callback, side=Side.RIGHT),
+            self.buffer_size,
+        )
+        self._odom_sub = self.create_subscription(
+            Odometry, 'sub_odom', self._odom_callback, self.buffer_size
+        )
+        self._object_sub = self.create_subscription(
+            ObjectInfoMultiArray,
+            'sub_object_info',
+            self._object_callback,
+            self.buffer_size,
+        )
+
+    def _lane_callback(self, msg: PointCloud2, side: Side) -> None:
+        pc_iter = pc2.read_points(msg, field_names=['x', 'y'], skip_nans=True)
+        lane_points = np.array(list(pc_iter), dtype=float)
+        with self._lock:
+            self.lane_estimator.update_lane(side, lane_points)
+
+    def _odom_callback(self, _msg: Odometry) -> None:
+        self.has_received_odometry = True
+
+    def _object_callback(self, msg: ObjectInfoMultiArray) -> None:
+        with self._lock:
+            self._latest_objects = list(msg.objects)
 
     def _init_traffic_sign_parameters(self) -> None:
         self._stop_sign_class_id = int(get_ros_parameter(self, 'stop_sign_class_id'))
@@ -181,7 +183,6 @@ class ExtremumSeekingMpc(Node):
     def _init_traffic_sign_state(self) -> None:
         self._state: State = State.RUNNING
         self._latest_rects: list[Rect] = []
-        # DECELERATING中にstop_signをロストした際、直前のスケール値を維持するために保持する
         self._last_velocity_scale: float = 1.0
 
     def _bbox_callback(self, msg: RectMultiArray) -> None:
@@ -232,7 +233,6 @@ class ExtremumSeekingMpc(Node):
 
         stop_sign_bbox = self._get_largest_bbox(self._stop_sign_class_id)
         if stop_sign_bbox is None:
-            # 看板ロスト時はロスト直前のスケールを維持する
             return self._last_velocity_scale
 
         bbox_width = stop_sign_bbox.width
@@ -247,215 +247,34 @@ class ExtremumSeekingMpc(Node):
         self._last_velocity_scale = float(scale)
         return self._last_velocity_scale
 
-    def calculate_effective_curvatures(
-        self, curvatures: np.ndarray
-    ) -> np.ndarray:
-        curvature_array = np.asarray(curvatures, dtype=float).reshape(-1)
-
-        if curvature_array.size != self.horizon_length:
-            raise ValueError(
-                "curvatures length must match the prediction horizon length."
-            )
-
-        return self.curvature_gain * curvature_array
-
-    def predict_ego_position(
-        self, effective_curvatures: np.ndarray
-    ) -> Tuple[np.ndarray, np.ndarray]:
-        ego_positions = self.pose_predictor.predict_relative_ego_positions(
-            effective_curvatures
-        )
-        seek_positions_relative = self.pose_predictor.predict_relative_seek_positions(
-            ego_positions
-        )
-        seek_positions = self.pose_predictor.predict_absolute_seek_positions(
-            ego_positions, seek_positions_relative
-        )
-
-        return ego_positions, seek_positions
-
-    def calculate_object_risk(self, seek_positions: np.ndarray) -> np.ndarray:
-        return self.object_risk_calculator.compute_object_risk(seek_positions)
-
-    def calculate_road_risk(
-        self, seek_positions: np.ndarray
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-
-        left_road_risk, left_y_hat = self.road_risk_calculator.compute_road_risk(
-            seek_positions, Side.LEFT
-        )
-        right_road_risk, right_y_hat = self.road_risk_calculator.compute_road_risk(
-            seek_positions, Side.RIGHT
-        )
-        benefit = self.road_risk_calculator.get_benefit_value(
-            seek_positions, left_y_hat, right_y_hat
-        )
-
-        return left_road_risk, right_road_risk, benefit
-
-    def calculate_total_risk(
-        self,
-        object_risk: np.ndarray,
-        left_road_risk: np.ndarray,
-        right_road_risk: np.ndarray,
-        benefit: np.ndarray,
-    ) -> np.ndarray:
-
-        return (
-            np.asarray(object_risk, dtype=float)
-            + np.asarray(left_road_risk, dtype=float)
-            + np.asarray(right_road_risk, dtype=float)
-            - self.benefit_gain * np.asarray(benefit, dtype=float)
-        )
-
-    def update_curvatures(self, total_risk: np.ndarray) -> np.ndarray:
-
-        updated_curvatures = np.asarray(
-            self.path_optimizer.apply_extremum_seeking_control(total_risk),
-            dtype=float,
-        ).reshape(-1)
-
-        if updated_curvatures.size != self.horizon_length:
-            raise ValueError(
-                "PathOptimizer returned a curvature sequence whose length "
-                "does not match horizon_times."
-            )
-        if not np.all(np.isfinite(updated_curvatures)):
-            raise ValueError(
-                "PathOptimizer returned NaN or Inf in the curvature sequence."
-            )
-
-        self.curvatures = updated_curvatures
-        return self.curvatures.copy()
-
-    def calculate_linear_velocity_reference(
-        self, effective_curvature: float
-    ) -> float:
-
-        first_horizon_time = float(self.predict_horizon[0])
-        return calculate_decelerated_velocity(
-            base_velocity=self.ego_target_velocity,
-            eval_velocity=self.ego_target_velocity,
-            curvature=effective_curvature,
-            dt=first_horizon_time,
-            deceleration_angle_maximum=self.deceleration_angle_maximum,
-            deceleration_gain=self.deceleration_gain,
-        )
-
-    @staticmethod
-    def calculate_yaw_rate_reference(
-        linear_velocity_reference: float, effective_curvature: float
-    ) -> float:
-
-        return float(linear_velocity_reference * effective_curvature)
-
-    def _detect_unwinding(self, effective_curvatures: np.ndarray) -> bool:
-        """くの字（曲がり終わり）を検出する.
-
-        シーク点1、シーク点2、シーク点3が同方向であり，シーク点2の曲率が
-        前後のシーク点よりも大きい（局所ピーク）場合，曲がり終わりと判定する．
-
-        Args:
-            effective_curvatures: ゲイン適用済みの曲率列．
-
-        Returns:
-            曲がり終わりが検出された場合 True．
-        """
-        if self.horizon_length < 3:
-            return False
-        c1 = float(effective_curvatures[0])
-        c2 = float(effective_curvatures[1])
-        c3 = float(effective_curvatures[2])
-        is_same_direction = (
-            c1 * c2 > 0.0
-            and c2 * c3 > 0.0
-        )
-        is_local_peak = (
-            abs(c2) - abs(c1) >= self.counter_steer_min_peak_difference
-            and abs(c2) - abs(c3) >= self.counter_steer_min_peak_difference
-        )
-        return is_same_direction and is_local_peak
-
-    def calculate_control_reference(
-        self, effective_curvatures: np.ndarray
-    ) -> Tuple[float, float]:
-        """MPC曲率から車両指令（線速度・ヨー角）を計算する.
-
-        線速度は常にMPC内部曲率から計算する．
-        ヨー角は通常時はMPC内部曲率から計算するが，
-        くの字（曲がり終わり）を検出中は設定された上限値の逆ハンドルを出力する．
-        これにより，MPC内部状態（curvatures）は逆ハンドル出力の影響を受けない．
-        """
-        command_curvature = float(
-            effective_curvatures[self.command_curvature_point - 1]
-        )
-
-        # 線速度は常にMPC曲率から計算（逆ハンドル中も変わらない）
-        linear_velocity_reference = self.calculate_linear_velocity_reference(
-            command_curvature
-        )
-
-        # くの字（曲がり終わり）検出中は設定された上限値で逆ハンドル
-        if self.counter_steer_enabled and self._detect_unwinding(
-            effective_curvatures
-        ):
-            c2 = float(effective_curvatures[1])
-            counter_curvature = (
-                -np.sign(c2)
-                * self.counter_steer_curvature_limit
-                * self.curvature_gain
-            )
-            yaw_rate_reference = self.calculate_yaw_rate_reference(
-                linear_velocity_reference, counter_curvature
-            ) * self.yaw_rate_gain
-        else:
-            yaw_rate_reference = self.calculate_yaw_rate_reference(
-                linear_velocity_reference, command_curvature
-            ) * self.yaw_rate_gain
-
-        return linear_velocity_reference, yaw_rate_reference
-
     def publish_cmd_vel(
         self, vehicle_linear_velocity: float, yaw_rate: float
     ) -> None:
-
         twist_msg = Twist()
         twist_msg.linear.x = float(vehicle_linear_velocity)
         twist_msg.angular.z = float(yaw_rate)
         self.twist_pub.publish(twist_msg)
 
-    def tf_viewer(self, ego_positions: np.ndarray) -> None:
-
-        positions = np.asarray(ego_positions, dtype=float)
-        predicted_yaws = np.asarray(
-            self.pose_predictor.last_predicted_yaws, dtype=float
-        )
+    def broadcast_predicted_poses(
+        self, x_points: np.ndarray, y_points: np.ndarray, yaws: np.ndarray
+    ) -> None:
         now = self.get_clock().now().to_msg()
-
-        for horizon_idx, position in enumerate(positions):
-            yaw = (
-                float(predicted_yaws[horizon_idx])
-                if horizon_idx < predicted_yaws.size
-                else 0.0
-            )
-
+        for idx, (px, py, yaw) in enumerate(zip(x_points, y_points, yaws)):
             transform = TransformStamped()
             transform.header.stamp = now
             transform.header.frame_id = self.base_footprint_frame_id
-            transform.child_frame_id = f"predicted_ego_pose_{horizon_idx}"
-            transform.transform.translation.x = float(position[Vector2.X])
-            transform.transform.translation.y = float(position[Vector2.Y])
+            transform.child_frame_id = f"predicted_ego_pose_{idx}"
+            transform.transform.translation.x = float(px)
+            transform.transform.translation.y = float(py)
             transform.transform.translation.z = 0.0
             transform.transform.rotation.x = 0.0
             transform.transform.rotation.y = 0.0
             transform.transform.rotation.z = float(np.sin(0.5 * yaw))
             transform.transform.rotation.w = float(np.cos(0.5 * yaw))
-
             self.tf_broadcaster.sendTransform(transform)
 
     def publish_cmd_vel_timer_callback(self) -> None:
-
-        if not self.pose_predictor.has_received_odometry:
+        if not self.has_received_odometry:
             if not self.waiting_for_odometry_logged:
                 self.get_logger().warning(
                     "Waiting for odometry. Publishing zero command."
@@ -467,65 +286,52 @@ class ExtremumSeekingMpc(Node):
         self.waiting_for_odometry_logged = False
 
         try:
-            current_effective_curvatures = self.calculate_effective_curvatures(
-                self.curvatures
-            )
-            _evaluated_ego_positions, evaluated_seek_positions = (
-                self.predict_ego_position(current_effective_curvatures)
-            )
+            with self._lock:
+                objects = list(self._latest_objects)
+                plan = self.planner.plan(
+                    self.lane_estimator, objects, self.prev_curvature
+                )
+                traffic_sign_scale = self._compute_traffic_sign_velocity_scale()
 
-            object_risk = self.calculate_object_risk(evaluated_seek_positions)
-            left_road_risk, right_road_risk, benefit = self.calculate_road_risk(
-                evaluated_seek_positions
-            )
-            total_risk = self.calculate_total_risk(
-                object_risk, left_road_risk, right_road_risk, benefit
-            )
+            self.prev_curvature = plan.curvature
 
-            updated_curvatures = self.update_curvatures(total_risk)
-            updated_effective_curvatures = self.calculate_effective_curvatures(
-                updated_curvatures
+            linear_velocity = calculate_decelerated_velocity(
+                base_velocity=self.ego_target_velocity,
+                eval_velocity=self.ego_target_velocity,
+                curvature=plan.curvature,
+                dt=self.deceleration_dt,
+                deceleration_angle_maximum=self.deceleration_angle_maximum,
+                deceleration_gain=self.deceleration_gain,
             )
+            yaw_rate = linear_velocity * plan.curvature * self.yaw_rate_gain
 
-            vehicle_linear_velocity, yaw_rate = self.calculate_control_reference(
-                updated_effective_curvatures
-            )
-
-            traffic_sign_scale = self._compute_traffic_sign_velocity_scale()
-            vehicle_linear_velocity *= traffic_sign_scale
+            linear_velocity *= traffic_sign_scale
             yaw_rate *= traffic_sign_scale
 
-            commanded_ego_positions, _commanded_seek_positions = (
-                self.predict_ego_position(updated_effective_curvatures)
-            )
-
-            self.publish_cmd_vel(vehicle_linear_velocity, yaw_rate)
-            self.tf_viewer(commanded_ego_positions)
+            self.publish_cmd_vel(linear_velocity, yaw_rate)
+            self.broadcast_predicted_poses(plan.x, plan.y, plan.yaw)
 
         except Exception as error:
-            self.get_logger().error(
-                f"Extremum Seeking control cycle failed: {error}"
-            )
+            self.get_logger().error(f"Sampling MPC control cycle failed: {error}")
             self.publish_cmd_vel(0.0, 0.0)
 
     def stop_vehicle(self) -> None:
-
         self.publish_cmd_vel(0.0, 0.0)
 
 
 def main(args=None) -> None:
     rclpy.init(args=args)
-    extremum_seeking_mpc = ExtremumSeekingMpc()
+    node = ExtremumSeekingMpc()
 
     try:
-        rclpy.spin(extremum_seeking_mpc)
+        rclpy.spin(node)
     except KeyboardInterrupt:
-        extremum_seeking_mpc.get_logger().info(
+        node.get_logger().info(
             "KeyboardInterrupt received. Publishing stop command."
         )
     finally:
-        extremum_seeking_mpc.stop_vehicle()
-        extremum_seeking_mpc.destroy_node()
+        node.stop_vehicle()
+        node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
 

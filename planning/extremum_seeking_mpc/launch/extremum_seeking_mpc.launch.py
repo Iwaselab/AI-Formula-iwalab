@@ -12,11 +12,7 @@ def generate_launch_description():
 
     ROS_PARAM_CONFIG = (
         osp.join(PACKAGE_DIR, "config", "extremum_seeking_mpc_params.yaml"),
-        osp.join(PACKAGE_DIR, "config", "extremum_seeking_controller_params.yaml"),
         osp.join(PACKAGE_DIR, "config", "object_risk_calculator_params.yaml"),
-        osp.join(PACKAGE_DIR, "config", "road_risk_calculator_params.yaml"),
-        osp.join(PACKAGE_DIR, "config", "pose_predictor_params.yaml"),
-        osp.join(PACKAGE_DIR, "config", "back_propagation_params.yaml"),
     )
 
     extremum_seeking_mpc = Node(
