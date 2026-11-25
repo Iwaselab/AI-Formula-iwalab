@@ -1,40 +1,43 @@
 /**:
   ros__parameters:
-    control_period: 0.02 # [s] (50 Hz)
-    buffer_size: 10
+    # ===== 基本 =====
+    control_period: 0.02        # [s] 制御周期(50 Hz)。plan が間に合わなければ 0.03〜0.04 に伸ばす
+    buffer_size: 10             # ROS の購読/配信キュー長。通常は変えない
 
-    planned_speed: [2.5, 0.0] # linear_velocity[m/s], angular_velocity[rad/s]
-    yaw_rate_gain: 1.0
+    planned_speed: [3.0, 0.0]   # [直進速度 m/s, 角速度 rad/s]。使われるのは第1要素(直進速度)のみ
+    yaw_rate_gain: 1.0          # 指令ヨーレートに掛ける倍率。下げる=旋回が穏やか(曲がり不足に注意)、上げる=機敏
 
-    # Traffic sign stop/go parameters
-    stop_sign_class_id: 5
-    go_sign_class_id: 6
-    decel_bbox_width_start: 15.0
-    stop_bbox_width_threshold: 45.0
-    min_velocity_scale: 0.2
+    # ===== 標識による停止/発進 =====
+    stop_sign_class_id: 5       # 停止標識のクラス ID
+    go_sign_class_id: 6         # 発進標識のクラス ID
+    decel_bbox_width_start: 15.0      # [px] 停止標識の bbox 幅がこの値を超えたら減速開始
+    stop_bbox_width_threshold: 45.0   # [px] この幅以上で完全停止。小さくする=手前で止まる
+    min_velocity_scale: 0.2     # 停止直前までの最低速度倍率(0〜1)。減速中はこの倍率まで下がる
 
-    # Curvature-based deceleration
+    # ===== カーブ時の減速 =====
     velocity_control:
-      eval_dt: 0.5 # [s]
-      deceleration_angle_maximum: 0.267
-      deceleration_gain: 0.5
+      eval_dt: 0.5                      # [s] 「この時間で何 rad 曲がるか」を見積もる時間幅
+      deceleration_angle_maximum: 0.12  # [rad] 見積もり旋回角がこれを超えると減速。小さくする=早めに減速
+      deceleration_gain: 2.0            # 超過 1 rad あたりの減速量 [m/s]。大きくする=強く減速
 
-    # Lane fitting (stateless least-squares, no extrapolation)
+    # ===== 白線の折れ線化 =====
     lane:
-      max_point_length: 50.0 # [m]
-      width: 3.5 # [m] 片側欠損時の補完用車線幅
-      min_points_for_quadratic: 6
-      min_x_range_for_quadratic: 4.0 # [m]
+      max_point_length: 12.0    # [m] 車両からこの距離までの白線点だけ使う。短い=遠方のノイズに強いが先が見えない
+      width: 3.5                # [m] 車線幅。片側の白線しか見えないとき、反対側をこの幅で補う。実コース幅(3.5m)に合わせる
+      min_segment_length: 0.2   # [m] これより近い点は間引く。大きい=折れ線が粗く滑らか、小さい=点群に忠実
+      max_gap: 1.5              # [m] これ以上離れた点へは線をつなげない(偽の線分防止)。白線が途切れがちなら大きくする
 
-    # Sampling-based MPC
+    # ===== サンプリング MPC(2区間曲率: κ1=指令、κ2=先読み)=====
     sampling:
-      curvature_limit: 0.15 # [rad/m] (R_min = 6.67 m 相当)
-      num_candidates: 41 # 奇数を指定（中央に 0.0 を含む）
-      horizon_min_distance: 1.5 # [m]
-      horizon_max_distance: 8.0 # [m]
-      num_horizon_points: 8
-      min_valid_points: 3
-      center_weight: 1.0
-      boundary_weight: 10.0
-      road_margin: 0.3 # [m] 白線からの安全余裕
-      smoothness_weight: 0.05 # 前回曲率との差の重み（小さめから調整）
+      curvature_limit: 0.35     # [rad/m] 曲率の上限(R_min=2.9 m 相当)。実車の最小旋回半径に合わせる
+      num_candidates: 13        # 軸ごとの曲率候補数(奇数)。総数は 13×13=169。増やす=滑らかだが計算が重い
+      horizon_min_distance: 1.0 # [m] 評価する最も近い点の弧長
+      horizon_max_distance: 7.5 # [m] 評価する最も遠い点の弧長。長い=先読み、短い=近傍重視
+      num_horizon_points: 8     # 評価点の数(min〜max を等間隔)。増やす=精密だが重い
+      switch_distance: 2.0      # [m] κ1 から κ2 に切り替わる弧長。長い=単一円弧に近く安定、短い=S字修正に強い
+      far_weight: 0.4           # 最遠点の重み(最近点は 1.0)。小さい=近傍重視で応答が速い、大きい=遠方も見て穏やか
+      min_valid_points: 3       # 白線が有効な評価点がこれ未満の候補は除外。白線が短いときは下げる
+      center_weight: 1.0        # 道路中心からのずれ(2乗)の重み。大きい=中央を強く狙う
+      boundary_weight: 20.0     # 白線に近づきすぎるペナルティの重み。大きい=白線を強く避ける
+      road_margin: 0.65         # [m] 白線からこの距離以内に入るとペナルティ。大きい=余裕を持つ(車体半幅+余裕)
+      smoothness_weight: 5.0    # 前回曲率との差(2乗)の重み。大きい=ハンドリングが滑らかだが反応が遅れる

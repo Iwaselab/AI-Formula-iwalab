@@ -8,13 +8,15 @@ from .lane_center_estimator import LaneCenterEstimator
 
 @dataclass(frozen=True)
 class SamplingPlannerConfig:
-    """Configuration for sampling-based single-curvature arc MPC."""
+    """Configuration for sampling-based two-segment arc MPC."""
 
     curvature_limit: float = 0.15
-    num_candidates: int = 41
-    horizon_min_distance: float = 1.5
-    horizon_max_distance: float = 8.0
+    num_candidates: int = 21  # per axis (kappa1 x kappa2 candidates in total)
+    horizon_min_distance: float = 1.0
+    horizon_max_distance: float = 5.0
     num_horizon_points: int = 8
+    switch_distance: float = 2.0
+    far_weight: float = 0.4
     min_valid_points: int = 3
     center_weight: float = 1.0
     boundary_weight: float = 10.0
@@ -23,13 +25,11 @@ class SamplingPlannerConfig:
     object_variance_x: float = 1.0
     object_variance_y: float = 1.0
     object_gain: float = 15.0
-    obstacle_class_ids: Tuple[int, ...] = (1, 2, 3, 4, 6, 7)
+    obstacle_class_ids: Tuple[int, ...] = (1, 2, 3, 4, 7)
 
 
 @dataclass(frozen=True)
 class PlanResult:
-    """Selected curvature and corresponding predicted trajectory."""
-
     curvature: float
     x: np.ndarray
     y: np.ndarray
@@ -38,7 +38,11 @@ class PlanResult:
 
 
 class SamplingPlanner:
-    """Vectorized sampling MPC over constant-curvature circular arcs."""
+    """Vectorized sampling MPC over two-segment constant-curvature arcs.
+
+    kappa1 is used for the first `switch_distance` meters (and is the command),
+    kappa2 for the rest (look-ahead only).
+    """
 
     def __init__(self, config: SamplingPlannerConfig) -> None:
         if config.curvature_limit <= 0.0:
@@ -53,52 +57,56 @@ class SamplingPlanner:
             )
         if config.num_horizon_points < 1:
             raise ValueError("num_horizon_points must be at least 1.")
+        if config.switch_distance <= 0.0:
+            raise ValueError("switch_distance must be positive.")
+        if not 0.0 <= config.far_weight <= 1.0:
+            raise ValueError("far_weight must be in [0, 1].")
         if config.min_valid_points < 1:
             raise ValueError("min_valid_points must be at least 1.")
         if config.object_variance_x <= 0.0 or config.object_variance_y <= 0.0:
             raise ValueError("object_variance_x and object_variance_y must be positive.")
 
         self.config = config
-        self.curvatures = np.linspace(
+        k_axis = np.linspace(
             -config.curvature_limit, config.curvature_limit, config.num_candidates
         )
+        k1, k2 = np.meshgrid(k_axis, k_axis, indexing="ij")
+        self.curvatures = k1.ravel()  # command curvature kappa1
+        self._k2 = k2.ravel()
         self.arc_lengths = np.linspace(
             config.horizon_min_distance,
             config.horizon_max_distance,
             config.num_horizon_points,
         )
-        self._cand_x, self._cand_y, self._cand_yaw = self._rollout_arcs(
-            self.curvatures, self.arc_lengths
+        self._cand_x, self._cand_y, self._cand_yaw = self._rollout_two_arcs(
+            self.curvatures, self._k2, self.arc_lengths, config.switch_distance
         )
+        self._w = np.linspace(1.0, config.far_weight, config.num_horizon_points)
 
     @staticmethod
-    def _rollout_arcs(
-        curvatures: np.ndarray, arc_lengths: np.ndarray
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Compute exact (x, y, yaw) in base_footprint for constant-curvature arcs."""
-        k = curvatures[:, np.newaxis]
-        s = arc_lengths[np.newaxis, :]
+    def _arc(k, s, th0=0.0, x0=0.0, y0=0.0):
         ks = k * s
+        small = np.abs(k) < 1e-6
+        k_safe = np.where(small, 1.0, k)
+        x = np.where(
+            small,
+            x0 + s * np.cos(th0),
+            x0 + (np.sin(th0 + ks) - np.sin(th0)) / k_safe,
+        )
+        y = np.where(
+            small,
+            y0 + s * np.sin(th0),
+            y0 - (np.cos(th0 + ks) - np.cos(th0)) / k_safe,
+        )
+        return x, y, th0 + ks
 
-        x = np.empty_like(ks, dtype=float)
-        y = np.empty_like(ks, dtype=float)
-        yaw = ks.copy()
-
-        straight = np.abs(k[:, 0]) < 1e-6
-        x[straight] = s
-        y[straight] = 0.0
-
-        curved = ~straight
-        if np.any(curved):
-            k_c = k[curved]
-            ks_c = ks[curved]
-            x[curved] = np.sin(ks_c) / k_c
-            y[curved] = (1.0 - np.cos(ks_c)) / k_c
-
-        return x, y, yaw
+    @classmethod
+    def _rollout_two_arcs(cls, k1, k2, arc_lengths, switch):
+        s = arc_lengths[np.newaxis, :]
+        x1, y1, th1 = cls._arc(k1[:, np.newaxis], np.minimum(s, switch))
+        return cls._arc(k2[:, np.newaxis], np.maximum(s - switch, 0.0), th1, x1, y1)
 
     def _compute_object_cost(self, objects: Iterable) -> np.ndarray:
-        """Compute mean Gaussian obstacle risk across horizon points for each candidate."""
         obs_xy = []
         obs_weights = []
         allowed = set(self.config.obstacle_class_ids)
@@ -114,8 +122,8 @@ class SamplingPlanner:
         if not obs_xy:
             return np.zeros(len(self.curvatures), dtype=float)
 
-        obs_arr = np.asarray(obs_xy, dtype=float)  # (M, 2)
-        w_arr = np.asarray(obs_weights, dtype=float)  # (M,)
+        obs_arr = np.asarray(obs_xy, dtype=float)
+        w_arr = np.asarray(obs_weights, dtype=float)
 
         dx = self._cand_x[:, :, np.newaxis] - obs_arr[np.newaxis, np.newaxis, :, 0]
         dy = self._cand_y[:, :, np.newaxis] - obs_arr[np.newaxis, np.newaxis, :, 1]
@@ -127,7 +135,9 @@ class SamplingPlanner:
         )
 
         exponent = -0.5 * ((dx ** 2) * inv_var_x + (dy ** 2) * inv_var_y)
-        risk_per_point = np.sum(norm_const * np.exp(exponent) * w_arr[np.newaxis, np.newaxis, :], axis=2)
+        risk_per_point = np.sum(
+            norm_const * np.exp(exponent) * w_arr[np.newaxis, np.newaxis, :], axis=2
+        )
         return np.max(risk_per_point, axis=1)
 
     def plan(
@@ -136,15 +146,16 @@ class SamplingPlanner:
         objects: Iterable,
         prev_curvature: float,
     ) -> PlanResult:
-        """Select the optimal curvature candidate minimizing path, boundary, and object costs."""
-        y_center, y_left_bound, y_right_bound, valid = lane_estimator.estimate_road_bounds(
-            self._cand_x
+        center_sq_err, boundary_sq_err, valid = lane_estimator.evaluate_points(
+            self._cand_x, self._cand_y, self.config.road_margin
         )
         valid_counts = np.sum(valid, axis=1)
         max_valid = int(np.max(valid_counts))
 
         if max_valid == 0:
-            idx = int(np.argmin(np.abs(self.curvatures - prev_curvature)))
+            idx = int(np.argmin(
+                np.abs(self.curvatures - prev_curvature) + np.abs(self._k2)
+            ))
             return PlanResult(
                 curvature=float(self.curvatures[idx]),
                 x=self._cand_x[idx].copy(),
@@ -155,15 +166,10 @@ class SamplingPlanner:
 
         required_valid = min(self.config.min_valid_points, max_valid)
         eligible = valid_counts >= required_valid
-        denom = np.maximum(valid_counts, 1)
-
-        center_sq_err = np.where(valid, (self._cand_y - y_center) ** 2, 0.0)
-        center_cost = np.sum(center_sq_err, axis=1) / denom
-
-        left_excess = np.maximum(0.0, self._cand_y - (y_left_bound - self.config.road_margin))
-        right_excess = np.maximum(0.0, (y_right_bound + self.config.road_margin) - self._cand_y)
-        boundary_sq_err = np.where(valid, left_excess ** 2 + right_excess ** 2, 0.0)
-        boundary_cost = np.sum(boundary_sq_err, axis=1) / denom
+        w = self._w[np.newaxis, :] * valid
+        denom = np.maximum(np.sum(w, axis=1), 1e-9)
+        center_cost = np.sum(w * center_sq_err, axis=1) / denom
+        boundary_cost = np.sum(w * boundary_sq_err, axis=1) / denom
 
         object_cost = self._compute_object_cost(objects)
         smooth_cost = self.config.smoothness_weight * (self.curvatures - prev_curvature) ** 2

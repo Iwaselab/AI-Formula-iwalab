@@ -26,7 +26,7 @@ class State(Enum):
 
 
 class ExtremumSeekingMpc(Node):
-    """Sampling-based MPC node using constant-curvature arc rollouts."""
+    """Sampling-based MPC node using two-segment constant-curvature arc rollouts."""
 
     def __init__(self) -> None:
         super().__init__('extremum_seeking_mpc')
@@ -44,6 +44,9 @@ class ExtremumSeekingMpc(Node):
         self.has_received_odometry = False
         self.waiting_for_odometry_logged = False
         self._latest_objects: List[ObjectInfo] = []
+        self._last_cmd_yaw_rate = 0.0
+        self._odom_yaw_rate = 0.0
+        self._log_counter = 0
 
         self.timer = self.create_timer(
             self.control_period,
@@ -52,7 +55,7 @@ class ExtremumSeekingMpc(Node):
 
         self.get_logger().info(
             f"Sampling MPC started: planned_speed={self.ego_target_velocity:.3f} m/s, "
-            f"candidates={self.planner.config.num_candidates}, "
+            f"candidates={self.planner.config.num_candidates}^2, "
             f"curvature_limit={self.planner.config.curvature_limit:.4f} rad/m"
         )
 
@@ -76,8 +79,8 @@ class ExtremumSeekingMpc(Node):
 
         self.lane_max_point_length = get("lane.max_point_length")
         self.lane_width = get("lane.width")
-        self.lane_min_points_for_quadratic = get("lane.min_points_for_quadratic", int)
-        self.lane_min_x_range_for_quadratic = get("lane.min_x_range_for_quadratic")
+        self.lane_min_segment_length = get("lane.min_segment_length")
+        self.lane_max_gap = get("lane.max_gap")
 
         self.planner_config = SamplingPlannerConfig(
             curvature_limit=get("sampling.curvature_limit"),
@@ -85,6 +88,8 @@ class ExtremumSeekingMpc(Node):
             horizon_min_distance=get("sampling.horizon_min_distance"),
             horizon_max_distance=get("sampling.horizon_max_distance"),
             num_horizon_points=get("sampling.num_horizon_points", int),
+            switch_distance=get("sampling.switch_distance"),
+            far_weight=get("sampling.far_weight"),
             min_valid_points=get("sampling.min_valid_points", int),
             center_weight=get("sampling.center_weight"),
             boundary_weight=get("sampling.boundary_weight"),
@@ -110,8 +115,8 @@ class ExtremumSeekingMpc(Node):
         self.lane_estimator = LaneCenterEstimator(
             max_point_length=self.lane_max_point_length,
             lane_width=self.lane_width,
-            min_points_for_quadratic=self.lane_min_points_for_quadratic,
-            min_x_range_for_quadratic=self.lane_min_x_range_for_quadratic,
+            min_segment_length=self.lane_min_segment_length,
+            max_gap=self.lane_max_gap,
         )
         self.planner = SamplingPlanner(self.planner_config)
 
@@ -120,31 +125,21 @@ class ExtremumSeekingMpc(Node):
             Twist, 'pub_twist_command', self.buffer_size
         )
         self._bbox_sub = self.create_subscription(
-            RectMultiArray,
-            'sub_bbox',
-            self._bbox_callback,
-            self.buffer_size,
+            RectMultiArray, 'sub_bbox', self._bbox_callback, self.buffer_size
         )
         self._left_lane_sub = self.create_subscription(
-            PointCloud2,
-            'sub_road_l',
-            partial(self._lane_callback, side=Side.LEFT),
-            self.buffer_size,
+            PointCloud2, 'sub_road_l',
+            partial(self._lane_callback, side=Side.LEFT), self.buffer_size,
         )
         self._right_lane_sub = self.create_subscription(
-            PointCloud2,
-            'sub_road_r',
-            partial(self._lane_callback, side=Side.RIGHT),
-            self.buffer_size,
+            PointCloud2, 'sub_road_r',
+            partial(self._lane_callback, side=Side.RIGHT), self.buffer_size,
         )
         self._odom_sub = self.create_subscription(
             Odometry, 'sub_odom', self._odom_callback, self.buffer_size
         )
         self._object_sub = self.create_subscription(
-            ObjectInfoMultiArray,
-            'sub_object_info',
-            self._object_callback,
-            self.buffer_size,
+            ObjectInfoMultiArray, 'sub_object_info', self._object_callback, self.buffer_size,
         )
 
     def _lane_callback(self, msg: PointCloud2, side: Side) -> None:
@@ -153,8 +148,9 @@ class ExtremumSeekingMpc(Node):
         with self._lock:
             self.lane_estimator.update_lane(side, lane_points)
 
-    def _odom_callback(self, _msg: Odometry) -> None:
+    def _odom_callback(self, msg: Odometry) -> None:
         self.has_received_odometry = True
+        self._odom_yaw_rate = float(msg.twist.twist.angular.z)
 
     def _object_callback(self, msg: ObjectInfoMultiArray) -> None:
         with self._lock:
@@ -169,9 +165,7 @@ class ExtremumSeekingMpc(Node):
         self._decel_bbox_width_start = float(
             get_ros_parameter(self, 'decel_bbox_width_start')
         )
-        self._min_velocity_scale = float(
-            get_ros_parameter(self, 'min_velocity_scale')
-        )
+        self._min_velocity_scale = float(get_ros_parameter(self, 'min_velocity_scale'))
 
         if not 0.0 <= self._min_velocity_scale <= 1.0:
             raise ValueError('min_velocity_scale must be in [0.0, 1.0]')
@@ -182,7 +176,7 @@ class ExtremumSeekingMpc(Node):
 
     def _init_traffic_sign_state(self) -> None:
         self._state: State = State.RUNNING
-        self._latest_rects: list[Rect] = []
+        self._latest_rects: list = []
         self._last_velocity_scale: float = 1.0
 
     def _bbox_callback(self, msg: RectMultiArray) -> None:
@@ -247,9 +241,7 @@ class ExtremumSeekingMpc(Node):
         self._last_velocity_scale = float(scale)
         return self._last_velocity_scale
 
-    def publish_cmd_vel(
-        self, vehicle_linear_velocity: float, yaw_rate: float
-    ) -> None:
+    def publish_cmd_vel(self, vehicle_linear_velocity: float, yaw_rate: float) -> None:
         twist_msg = Twist()
         twist_msg.linear.x = float(vehicle_linear_velocity)
         twist_msg.angular.z = float(yaw_rate)
@@ -276,9 +268,7 @@ class ExtremumSeekingMpc(Node):
     def publish_cmd_vel_timer_callback(self) -> None:
         if not self.has_received_odometry:
             if not self.waiting_for_odometry_logged:
-                self.get_logger().warning(
-                    "Waiting for odometry. Publishing zero command."
-                )
+                self.get_logger().warning("Waiting for odometry. Publishing zero command.")
                 self.waiting_for_odometry_logged = True
             self.publish_cmd_vel(0.0, 0.0)
             return
@@ -288,9 +278,7 @@ class ExtremumSeekingMpc(Node):
         try:
             with self._lock:
                 objects = list(self._latest_objects)
-                plan = self.planner.plan(
-                    self.lane_estimator, objects, self.prev_curvature
-                )
+                plan = self.planner.plan(self.lane_estimator, objects, self.prev_curvature)
                 traffic_sign_scale = self._compute_traffic_sign_velocity_scale()
 
             self.prev_curvature = plan.curvature
@@ -311,6 +299,16 @@ class ExtremumSeekingMpc(Node):
             self.publish_cmd_vel(linear_velocity, yaw_rate)
             self.broadcast_predicted_poses(plan.x, plan.y, plan.yaw)
 
+            # Debug log (~1 Hz): command vs. actual yaw rate
+            self._log_counter += 1
+            if self._log_counter * self.control_period >= 1.0:
+                self._log_counter = 0
+                self.get_logger().info(
+                    f"kappa1={plan.curvature:+.3f} cmd_yaw_rate={yaw_rate:+.3f} "
+                    f"odom_yaw_rate={self._odom_yaw_rate:+.3f} v={linear_velocity:.2f} "
+                    f"lane={plan.has_valid_lane}"
+                )
+
         except Exception as error:
             self.get_logger().error(f"Sampling MPC control cycle failed: {error}")
             self.publish_cmd_vel(0.0, 0.0)
@@ -326,9 +324,7 @@ def main(args=None) -> None:
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        node.get_logger().info(
-            "KeyboardInterrupt received. Publishing stop command."
-        )
+        node.get_logger().info("KeyboardInterrupt received. Publishing stop command.")
     finally:
         node.stop_vehicle()
         node.destroy_node()

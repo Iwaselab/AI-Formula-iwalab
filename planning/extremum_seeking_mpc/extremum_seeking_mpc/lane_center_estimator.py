@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from typing import Optional, Tuple
 
 import numpy as np
@@ -6,102 +5,162 @@ import numpy as np
 from .util import Side
 
 
-@dataclass(frozen=True)
-class FittedLaneLine:
-    """Least-squares polynomial fit for a single lane line without extrapolation."""
+def order_lane_polyline(
+    lane_points: np.ndarray,
+    max_point_length: float = 15.0,
+    min_segment_length: float = 0.2,
+    max_gap: float = 1.5,
+) -> Optional[np.ndarray]:
+    """Filter and order 2D lane points into a forward polyline starting near the vehicle.
 
-    coeffs: np.ndarray  # Highest power first, compatible with np.polyval
-    x_min: float
-    x_max: float
+    The chain stops when the nearest remaining point is farther than max_gap,
+    so that no fake segment jumping back across the road is created.
+    """
+    points = np.asarray(lane_points, dtype=float)
+    if points.ndim != 2 or points.shape[1] < 2 or len(points) == 0:
+        return None
+
+    xy = points[:, :2]
+    dist_sq = xy[:, 0] ** 2 + xy[:, 1] ** 2
+    mask = (xy[:, 0] >= -0.5) & (dist_sq <= max_point_length ** 2)
+    filtered = xy[mask]
+    if len(filtered) < 2:
+        return None
+
+    start_idx = int(np.argmin(np.sum(filtered ** 2, axis=1)))
+    remaining = np.ones(len(filtered), dtype=bool)
+    remaining[start_idx] = False
+
+    ordered = [filtered[start_idx]]
+    min_seg_sq = min_segment_length ** 2
+    max_gap_sq = max_gap ** 2
+
+    while np.any(remaining):
+        last = ordered[-1]
+        cand_indices = np.flatnonzero(remaining)
+        diffs = filtered[cand_indices] - last
+        d_sq = np.sum(diffs ** 2, axis=1)
+        nearest_pos = int(np.argmin(d_sq))
+        if d_sq[nearest_pos] > max_gap_sq:
+            break  # do not jump to distant points
+        next_idx = cand_indices[nearest_pos]
+        remaining[next_idx] = False
+        if d_sq[nearest_pos] >= min_seg_sq:
+            ordered.append(filtered[next_idx])
+
+    if len(ordered) < 2:
+        return None
+
+    return np.asarray(ordered, dtype=float)
+
+
+def signed_distance_to_polyline(
+    query_xy: np.ndarray,
+    polyline_xy: np.ndarray,
+    side: Side,
+) -> np.ndarray:
+    """Signed distance from query_xy (Q, 2) to polyline_xy (M, 2).
+
+    Positive means inside the road; negative means outside the white line.
+    """
+    pts = np.asarray(query_xy, dtype=float)
+    seg_a = polyline_xy[:-1]
+    seg_b = polyline_xy[1:]
+    ab = seg_b - seg_a
+    len_sq = np.maximum(np.sum(ab ** 2, axis=1), 1e-12)
+
+    ap = pts[:, np.newaxis, :] - seg_a[np.newaxis, :, :]
+    t = np.clip(np.sum(ap * ab[np.newaxis, :, :], axis=2) / len_sq[np.newaxis, :], 0.0, 1.0)
+    closest = seg_a[np.newaxis, :, :] + t[:, :, np.newaxis] * ab[np.newaxis, :, :]
+
+    diff = pts[:, np.newaxis, :] - closest
+    dist_sq = np.sum(diff ** 2, axis=2)
+    best_seg = np.argmin(dist_sq, axis=1)
+
+    q_idx = np.arange(len(pts))
+    min_dist = np.sqrt(dist_sq[q_idx, best_seg])
+    best_diff = diff[q_idx, best_seg]
+    best_ab = ab[best_seg]
+
+    cross = best_ab[:, 0] * best_diff[:, 1] - best_ab[:, 1] * best_diff[:, 0]
+    if side == Side.LEFT:
+        inside_sign = -np.sign(cross)
+    else:
+        inside_sign = np.sign(cross)
+
+    return inside_sign * min_dist
 
 
 class LaneCenterEstimator:
-    """Stateless per-frame road center and boundary estimator from left/right lane points."""
+    """Stateless per-frame road evaluator using signed point-to-polyline distances."""
 
     def __init__(
         self,
-        max_point_length: float = 50.0,
+        max_point_length: float = 15.0,
         lane_width: float = 3.5,
-        min_points_for_quadratic: int = 6,
-        min_x_range_for_quadratic: float = 4.0,
+        min_segment_length: float = 0.2,
+        max_gap: float = 1.5,
     ) -> None:
         if max_point_length <= 0.0:
             raise ValueError("max_point_length must be positive.")
         if lane_width <= 0.0:
             raise ValueError("lane_width must be positive.")
-        if min_points_for_quadratic < 3:
-            raise ValueError("min_points_for_quadratic must be at least 3.")
-        if min_x_range_for_quadratic <= 0.0:
-            raise ValueError("min_x_range_for_quadratic must be positive.")
+        if min_segment_length <= 0.0:
+            raise ValueError("min_segment_length must be positive.")
+        if max_gap <= 0.0:
+            raise ValueError("max_gap must be positive.")
 
         self.max_point_length = float(max_point_length)
         self.lane_width = float(lane_width)
-        self.min_points_for_quadratic = int(min_points_for_quadratic)
-        self.min_x_range_for_quadratic = float(min_x_range_for_quadratic)
+        self.min_segment_length = float(min_segment_length)
+        self.max_gap = float(max_gap)
+        self.max_assoc_distance = 1.2 * self.lane_width
 
-        self._lanes: list[Optional[FittedLaneLine]] = [None, None]
+        self._polylines: list = [None, None]
 
     def update_lane(self, side: Side, lane_points: np.ndarray) -> None:
-        """Fit a 1st- or 2nd-order polynomial to filtered lane points for one side."""
-        points = np.asarray(lane_points, dtype=float)
-        if points.ndim != 2 or points.shape[1] < 2 or len(points) == 0:
-            self._lanes[side] = None
-            return
-
-        mask = (points[:, 0] >= 0.0) & (points[:, 0] <= self.max_point_length)
-        filtered = points[mask]
-        if len(filtered) < 2:
-            self._lanes[side] = None
-            return
-
-        x = filtered[:, 0]
-        y = filtered[:, 1]
-        x_min = float(np.min(x))
-        x_max = float(np.max(x))
-        x_range = x_max - x_min
-        if x_range <= 1e-3:
-            self._lanes[side] = None
-            return
-
-        use_quadratic = (
-            len(filtered) >= self.min_points_for_quadratic
-            and x_range >= self.min_x_range_for_quadratic
+        self._polylines[side] = order_lane_polyline(
+            lane_points,
+            max_point_length=self.max_point_length,
+            min_segment_length=self.min_segment_length,
+            max_gap=self.max_gap,
         )
-        degree = 2 if use_quadratic else 1
-        coeffs = np.polyfit(x, y, degree)
-        self._lanes[side] = FittedLaneLine(coeffs=coeffs, x_min=x_min, x_max=x_max)
 
     def has_any_lane(self) -> bool:
-        """Return True if at least one lane line is currently fitted."""
-        return self._lanes[Side.LEFT] is not None or self._lanes[Side.RIGHT] is not None
+        return (
+            self._polylines[Side.LEFT] is not None
+            or self._polylines[Side.RIGHT] is not None
+        )
 
-    @staticmethod
-    def _eval_side(
-        lane: Optional[FittedLaneLine], x_query: np.ndarray
-    ) -> Tuple[np.ndarray, np.ndarray]:
-        if lane is None:
-            zeros = np.zeros_like(x_query, dtype=float)
-            invalid = np.zeros_like(x_query, dtype=bool)
-            return zeros, invalid
+    def evaluate_points(
+        self,
+        x_points: np.ndarray,
+        y_points: np.ndarray,
+        road_margin: float,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Return center_sq_err, boundary_sq_err, valid_mask, each of shape (C, H)."""
+        x_arr = np.asarray(x_points, dtype=float)
+        y_arr = np.asarray(y_points, dtype=float)
+        shape = x_arr.shape
+        query_xy = np.column_stack([x_arr.ravel(), y_arr.ravel()])
+        n_pts = len(query_xy)
 
-        valid = (x_query >= lane.x_min) & (x_query <= lane.x_max)
-        y_vals = np.zeros_like(x_query, dtype=float)
-        if np.any(valid):
-            y_vals[valid] = np.polyval(lane.coeffs, x_query[valid])
-        return y_vals, valid
+        left_poly = self._polylines[Side.LEFT]
+        right_poly = self._polylines[Side.RIGHT]
 
-    def estimate_road_bounds(
-        self, x_query: np.ndarray
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """Evaluate road center, left bound, right bound, and valid mask at x_query.
+        if left_poly is not None:
+            d_l = signed_distance_to_polyline(query_xy, left_poly, Side.LEFT)
+            valid_l = np.abs(d_l) <= self.max_assoc_distance
+        else:
+            d_l = np.zeros(n_pts, dtype=float)
+            valid_l = np.zeros(n_pts, dtype=bool)
 
-        Never extrapolates beyond a side's detected [x_min, x_max]. When only one
-        side is valid at a query x, the opposite bound and center are offset by
-        lane_width / 2.
-        """
-        x_arr = np.asarray(x_query, dtype=float)
-        y_l, valid_l = self._eval_side(self._lanes[Side.LEFT], x_arr)
-        y_r, valid_r = self._eval_side(self._lanes[Side.RIGHT], x_arr)
+        if right_poly is not None:
+            d_r = signed_distance_to_polyline(query_xy, right_poly, Side.RIGHT)
+            valid_r = np.abs(d_r) <= self.max_assoc_distance
+        else:
+            d_r = np.zeros(n_pts, dtype=float)
+            valid_r = np.zeros(n_pts, dtype=bool)
 
         both = valid_l & valid_r
         only_l = valid_l & ~valid_r
@@ -109,20 +168,17 @@ class LaneCenterEstimator:
         valid = valid_l | valid_r
 
         half_w = 0.5 * self.lane_width
-        y_center = np.zeros_like(x_arr, dtype=float)
-        y_left_bound = np.zeros_like(x_arr, dtype=float)
-        y_right_bound = np.zeros_like(x_arr, dtype=float)
+        center_err = np.zeros(n_pts, dtype=float)
+        center_err[both] = 0.5 * (d_l[both] - d_r[both])
+        center_err[only_l] = d_l[only_l] - half_w
+        center_err[only_r] = d_r[only_r] - half_w
 
-        y_center[both] = 0.5 * (y_l[both] + y_r[both])
-        y_left_bound[both] = y_l[both]
-        y_right_bound[both] = y_r[both]
+        left_excess = np.where(valid_l, np.maximum(0.0, road_margin - d_l), 0.0)
+        right_excess = np.where(valid_r, np.maximum(0.0, road_margin - d_r), 0.0)
+        boundary_sq = left_excess ** 2 + right_excess ** 2
 
-        y_center[only_l] = y_l[only_l] - half_w
-        y_left_bound[only_l] = y_l[only_l]
-        y_right_bound[only_l] = y_l[only_l] - self.lane_width
-
-        y_center[only_r] = y_r[only_r] + half_w
-        y_left_bound[only_r] = y_r[only_r] + self.lane_width
-        y_right_bound[only_r] = y_r[only_r]
-
-        return y_center, y_left_bound, y_right_bound, valid
+        return (
+            (center_err ** 2).reshape(shape),
+            boundary_sq.reshape(shape),
+            valid.reshape(shape),
+        )
