@@ -30,28 +30,37 @@ def order_lane_polyline(
     start_idx = int(np.argmin(np.sum(filtered ** 2, axis=1)))
     remaining = np.ones(len(filtered), dtype=bool)
     remaining[start_idx] = False
-
-    ordered = [filtered[start_idx]]
     min_seg_sq = min_segment_length ** 2
     max_gap_sq = max_gap ** 2
 
-    while np.any(remaining):
-        last = ordered[-1]
-        cand_indices = np.flatnonzero(remaining)
-        diffs = filtered[cand_indices] - last
-        d_sq = np.sum(diffs ** 2, axis=1)
-        nearest_pos = int(np.argmin(d_sq))
-        if d_sq[nearest_pos] > max_gap_sq:
-            break  # do not jump to distant points
-        next_idx = cand_indices[nearest_pos]
-        remaining[next_idx] = False
-        if d_sq[nearest_pos] >= min_seg_sq:
-            ordered.append(filtered[next_idx])
+    def extend(chain):
+        """Greedily extend the chain from its last point using unused points."""
+        while np.any(remaining):
+            last = chain[-1]
+            cand_indices = np.flatnonzero(remaining)
+            d_sq = np.sum((filtered[cand_indices] - last) ** 2, axis=1)
+            nearest_pos = int(np.argmin(d_sq))
+            if d_sq[nearest_pos] > max_gap_sq:
+                break  # do not jump to distant points
+            next_idx = cand_indices[nearest_pos]
+            remaining[next_idx] = False
+            if d_sq[nearest_pos] >= min_seg_sq:
+                chain.append(filtered[next_idx])
+        return chain
 
+    # Chain in both directions from the closest point, so the polyline covers the
+    # whole line even when the closest point lies in the middle of it.
+    first = extend([filtered[start_idx]])
+    second = extend([filtered[start_idx]])
+    ordered = list(reversed(second[1:])) + first
     if len(ordered) < 2:
         return None
 
-    return np.asarray(ordered, dtype=float)
+    polyline = np.asarray(ordered, dtype=float)
+    # Orient the polyline rear -> front (the signed distance depends on the direction).
+    if polyline[-1, 0] < polyline[0, 0]:
+        polyline = polyline[::-1].copy()
+    return polyline
 
 
 def signed_distance_to_polyline(
@@ -134,6 +143,21 @@ class LaneCenterEstimator:
             min_segment_length=self.min_segment_length,
             max_gap=self.max_gap,
         )
+
+    def get_polyline(self, side: Side) -> Optional[np.ndarray]:
+        """Return the current ordered polyline (near -> far) of one side, or None."""
+        return self._polylines[side]
+
+    def visible_length(self) -> float:
+        """Approximate observed path length [m] of the longer lane polyline (0 if none)."""
+        best = 0.0
+        for poly in self._polylines:
+            if poly is None:
+                continue
+            seg = np.diff(poly, axis=0)
+            length = float(np.linalg.norm(poly[0])) + float(np.sum(np.linalg.norm(seg, axis=1)))
+            best = max(best, length)
+        return best
 
     def has_any_lane(self) -> bool:
         return (
