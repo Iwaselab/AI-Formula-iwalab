@@ -22,6 +22,8 @@ class SamplingPlannerConfig:
     boundary_weight: float = 10.0
     road_margin: float = 0.3
     smoothness_weight: float = 0.05
+    invalid_penalty: float = 3.0  # cost per weighted horizon point without lane info [m^2]
+    max_total_yaw: float = 1.57   # candidates turning more than this [rad] are rejected
     object_variance_x: float = 1.0
     object_variance_y: float = 1.0
     object_gain: float = 15.0
@@ -61,6 +63,10 @@ class SamplingPlanner:
             raise ValueError("switch_distance must be positive.")
         if not 0.0 <= config.far_weight <= 1.0:
             raise ValueError("far_weight must be in [0, 1].")
+        if config.invalid_penalty < 0.0:
+            raise ValueError("invalid_penalty must be non-negative.")
+        if config.max_total_yaw <= 0.0:
+            raise ValueError("max_total_yaw must be positive.")
         if config.min_valid_points < 1:
             raise ValueError("min_valid_points must be at least 1.")
         if config.object_variance_x <= 0.0 or config.object_variance_y <= 0.0:
@@ -165,11 +171,22 @@ class SamplingPlanner:
             )
 
         required_valid = min(self.config.min_valid_points, max_valid)
-        eligible = valid_counts >= required_valid
-        w = self._w[np.newaxis, :] * valid
-        denom = np.maximum(np.sum(w, axis=1), 1e-9)
-        center_cost = np.sum(w * center_sq_err, axis=1) / denom
-        boundary_cost = np.sum(w * boundary_sq_err, axis=1) / denom
+        # Reject candidates that U-turn (e.g. to escape the lane evaluation region)
+        yaw_ok = np.max(np.abs(self._cand_yaw), axis=1) <= self.config.max_total_yaw
+        eligible = (valid_counts >= required_valid) & yaw_ok
+        if not np.any(eligible):
+            eligible = valid_counts >= required_valid
+
+        # Points without lane information are NOT free: they cost invalid_penalty.
+        # Otherwise candidates that leave the observed region early look cheaper.
+        w_all = np.broadcast_to(self._w[np.newaxis, :], valid.shape)
+        denom = np.sum(w_all, axis=1)
+        center_cost = np.sum(
+            w_all * np.where(valid, center_sq_err, self.config.invalid_penalty), axis=1
+        ) / denom
+        boundary_cost = np.sum(
+            w_all * np.where(valid, boundary_sq_err, 0.0), axis=1
+        ) / denom
 
         object_cost = self._compute_object_cost(objects)
         smooth_cost = self.config.smoothness_weight * (self.curvatures - prev_curvature) ** 2

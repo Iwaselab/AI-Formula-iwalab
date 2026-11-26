@@ -58,10 +58,14 @@ def signed_distance_to_polyline(
     query_xy: np.ndarray,
     polyline_xy: np.ndarray,
     side: Side,
-) -> np.ndarray:
+    return_beyond_end: bool = False,
+):
     """Signed distance from query_xy (Q, 2) to polyline_xy (M, 2).
 
     Positive means inside the road; negative means outside the white line.
+    If return_beyond_end is True, also returns a bool mask that is True for
+    queries whose nearest point is the far end of the polyline and that
+    project beyond it (i.e. the line is not observed there).
     """
     pts = np.asarray(query_xy, dtype=float)
     seg_a = polyline_xy[:-1]
@@ -70,7 +74,8 @@ def signed_distance_to_polyline(
     len_sq = np.maximum(np.sum(ab ** 2, axis=1), 1e-12)
 
     ap = pts[:, np.newaxis, :] - seg_a[np.newaxis, :, :]
-    t = np.clip(np.sum(ap * ab[np.newaxis, :, :], axis=2) / len_sq[np.newaxis, :], 0.0, 1.0)
+    t_raw = np.sum(ap * ab[np.newaxis, :, :], axis=2) / len_sq[np.newaxis, :]
+    t = np.clip(t_raw, 0.0, 1.0)
     closest = seg_a[np.newaxis, :, :] + t[:, :, np.newaxis] * ab[np.newaxis, :, :]
 
     diff = pts[:, np.newaxis, :] - closest
@@ -88,7 +93,11 @@ def signed_distance_to_polyline(
     else:
         inside_sign = np.sign(cross)
 
-    return inside_sign * min_dist
+    signed = inside_sign * min_dist
+    if not return_beyond_end:
+        return signed
+    beyond_end = (best_seg == len(seg_a) - 1) & (t_raw[q_idx, best_seg] > 1.0)
+    return signed, beyond_end
 
 
 class LaneCenterEstimator:
@@ -149,15 +158,19 @@ class LaneCenterEstimator:
         right_poly = self._polylines[Side.RIGHT]
 
         if left_poly is not None:
-            d_l = signed_distance_to_polyline(query_xy, left_poly, Side.LEFT)
-            valid_l = np.abs(d_l) <= self.max_assoc_distance
+            d_l, beyond_l = signed_distance_to_polyline(
+                query_xy, left_poly, Side.LEFT, return_beyond_end=True
+            )
+            valid_l = (np.abs(d_l) <= self.max_assoc_distance) & ~beyond_l
         else:
             d_l = np.zeros(n_pts, dtype=float)
             valid_l = np.zeros(n_pts, dtype=bool)
 
         if right_poly is not None:
-            d_r = signed_distance_to_polyline(query_xy, right_poly, Side.RIGHT)
-            valid_r = np.abs(d_r) <= self.max_assoc_distance
+            d_r, beyond_r = signed_distance_to_polyline(
+                query_xy, right_poly, Side.RIGHT, return_beyond_end=True
+            )
+            valid_r = (np.abs(d_r) <= self.max_assoc_distance) & ~beyond_r
         else:
             d_r = np.zeros(n_pts, dtype=float)
             valid_r = np.zeros(n_pts, dtype=bool)

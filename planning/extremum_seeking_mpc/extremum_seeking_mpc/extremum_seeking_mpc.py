@@ -95,6 +95,8 @@ class ExtremumSeekingMpc(Node):
             boundary_weight=get("sampling.boundary_weight"),
             road_margin=get("sampling.road_margin"),
             smoothness_weight=get("sampling.smoothness_weight"),
+            invalid_penalty=get("sampling.invalid_penalty"),
+            max_total_yaw=get("sampling.max_total_yaw"),
             object_variance_x=get("object_risk_potential.variance_x"),
             object_variance_y=get("object_risk_potential.variance_y"),
             object_gain=get("object_risk_potential.gain"),
